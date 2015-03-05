@@ -5,19 +5,34 @@ export logLikeY, logLikeY!, updateZ!, getThetaStar, makeW, stdW, getZ
 #   w(ns x nknots): kernel weights
 # Returns:
 #   std_w(ns x nknots): kernel weights standardized to add to 1
-function stdW(w::Array{Float64})
+function stdW!(w::Array{Float64, 2})
   ns = size(w)[1]::Int64
   nknots = size(w)[2]::Int64
 
   total_weight = sum(w, 2)
-  std_w = Array(Float64, ns, nknots)
   for j=1:nknots
     for i=1:ns
-      std_w[i, j] = w[i, j] / total_weight[i]
+      w[i, j] /= total_weight[i]
     end
   end
 
-  return std_w
+end
+
+# Arguments:
+#   dw2(ns x nknots): distance matrix
+#   rho(1): bandwidth parameter
+# Return:
+#   w(ns x nknots): kernel weights
+function makeW(dw2::Array{Float64, 2}, rho::Float64)
+  ns = size(dw2)[1]::Int64
+  nknots = size(dw2)[2]::Int64
+
+  w = Array(Float64, ns, nknots)
+  for j = 1:nknots, i = 1:ns
+    w[i, j] = exp(-0.5 * dw2[i, j] / (rho^2))
+  end
+
+  return w
 end
 
 # Arguments:
@@ -54,22 +69,7 @@ function logLikeY!(y::Array{Int64}, theta_star::Array{Float64},
   end
 end
 
-# Arguments:
-#   dw2(ns x nknots): distance matrix
-#   rho(1): bandwidth parameter
-# Return:
-#   w(ns x nknots): kernel weights
-function makeW(dw2::Array{Float64}, rho::Float64)
-  ns = size(dw2)[1]::Int64
-  nknots = size(dw2)[2]::Int64
 
-  w = Array(Float64, ns, nknots)
-  for j = 1:nknots, i = 1:ns
-    w[i, j] = exp(-0.5 * dw2[i, j] / (rho^2))
-  end
-
-  return w
-end
 
 # Arguments:
 #   w(ns x nknots): kernel weights
@@ -136,5 +136,63 @@ end
 # include("getThetaStar.jl")
 # include("makeW.jl")
 # include("stdW.jl")
+
+end
+
+# generating PS(alpha) from Stephenson(2003)
+function rPS(n::Int64, alpha::Float64)
+  unif::Array{Float64, 1} = rand(n) * pi
+  stdexp::Array{Float64, 1} = rand(Distributions.Exponential(1), n)
+  psrv = Array(Float64, n)
+
+  for i = 1:n
+    log_a = (1 - alpha) / alpha * log(sin((1 - alpha) * unif[i])) +
+           log(sin(alpha * unif[i])) - (1 - alpha) / alpha * log(stdexp[i]) -
+           1 / alpha * log(sin(unif[i]))
+    psrv[i] = exp(log_a)
+  end
+
+  return psrv
+end
+
+# generate dependent rare binary data
+function rRareBinarySpat(x::Array{Float64, 3}, s::Array{Float64, 2},
+                         knots::Array{Float64, 2}, beta::Array{Float64, 1},
+                         xi::Float64, alpha::Float64, rho::Float64,
+                         thresh::Float64)
+  ns = size(x)[1]
+  nt = size(x)[2]
+  np = size(x)[3]
+  nknots = size(knots)[1]
+
+  x_beta = Array(Float64, ns, nt)
+  for t = 1:nt
+    x_beta[:, t] = reshape(x[:, t, :], ns, np) * beta
+  end
+
+  # get weights
+  dw2 = Array(Float64, ns, nknots)
+  for j = 1:nknots, i = 1:ns
+    dw2[i, j] = sqeuclidean(vec(s[i, :]), vec(knots[j, :]))
+  end
+
+  w = makeW(dw2, rho)
+  stdW!(w)
+
+  # get random effects and theta_star
+  a::Array{Float64, 2} = reshape(rPS(nknots * nt, alpha), nknots, nt)
+  theta_star::Array{Float64, 2} = getThetaStar(w, a, alpha)
+
+
+  # get underlying latent variable u ~ GEV(1, alpha, alpha)
+  y = Array(Int64, ns, nt)
+  for j = 1:nt, i = 1:ns
+    u = rand(Frechet(), 1)^alpha
+    z = u * theta_star[i, j]^alpha
+    h = x_beta[i, j] + (z^xi - 1) / xi
+    y[i, j] = h > thresh ? 1 : 0
+  end
+
+  return y
 
 end
