@@ -1,12 +1,14 @@
 cd()
 cd("./repos-git/extremes-project/code")
 
+# packages
 using Distributions
 using Distances
-using AuxFunctions
-using UpdateModel
 using ProfileView
 
+# modules
+using AuxFunctions
+using UpdateModel
 
 beta = fill(0.0, 3)
 beta_m = fill(0.0, 3)
@@ -36,6 +38,7 @@ for j = 1:nt
     x_beta[i, j] = rand(Normal(0, 1))
   end
 end
+rho = 1
 
 # get spatial locations
 s = reshape(x[:, 1, 2:3], ns, 2)
@@ -50,6 +53,10 @@ for j=1:nknots, i=1:ns
   dw2[i, j] = sqeuclidean(vec(s[i, :]), vec(knots[j, :]))
 end
 
+thresh = 0.0
+
+
+
 sqeuclidean(vec(s[1,:]), vec(knots[1, :]))
 
 beta = fill(10.0, 3)
@@ -58,8 +65,12 @@ beta[3] = 0
 for t = 1:nt
   x_beta[:, t] = reshape(x[:, t, :], ns, 3) * beta
 end
-rho = 0.1
-y = rRareBinarySpat(x, s, knots, beta, xi, alpha, rho, 0.0)
+rho = 1.0
+y = rRareBinarySpat(x, s, knots, beta, xi, alpha, rho, 20)
+
+
+
+
 
 cur_lly = logLikeY(y, theta_star, alpha, z)
 acc_beta = 1
@@ -73,7 +84,11 @@ candidate = Normal(0, 1)
 @time getZ(xi, x_beta)
 @time updateZ!(xi, x_beta, z)
 
-
+pointer(acc)
+acc = 55
+att = 60
+mh = 0.5
+(acc, att, mh) = mhUpdate(acc, att, mh)
 
 # initialize
 sampleBeta(1, y, theta_star, alpha, z, beta, beta_m, beta_s, xi,
