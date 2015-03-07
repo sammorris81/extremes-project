@@ -1,17 +1,21 @@
 module AuxFunctions
-export stdW!,
-       makeW,
-       logLikeY, logLikeY!,
-       getZ, updateZ!,
-       getThetaStar,
-       rPS,
-       rRareBinarySpat
+export std_w!,
+       make_w,
+       logpdf_rarebinary, logpdf_rarebinary!,
+       get_z, update_z!,
+       get_thetastar,
+       sample_pstab,
+       sample_rarebinary,
+       mh_update
+
+using Distances
+using Distributions
 
 # Arguments:
 #   w(ns x nknots): kernel weights
 # Returns:
 #   std_w(ns x nknots): kernel weights standardized to add to 1
-function stdW!(w::Array{FloatingPoint, 2})
+function std_w!(w::Array{Float64, 2})
   ns = size(w)[1]
   nknots = size(w)[2]
 
@@ -29,11 +33,11 @@ end
 #   rho(1): bandwidth parameter
 # Return:
 #   w(ns x nknots): kernel weights
-function makeW(dw2::Array{FloatingPoint, 2}, rho::FloatingPoint)
+function make_w(dw2::Array{Float64, 2}, rho::Float64)
   ns = size(dw2)[1]
   nknots = size(dw2)[2]
 
-  w = Array(FloatingPoint, ns, nknots)
+  w = Array(Float64, ns, nknots)
   for j = 1:nknots, i = 1:ns
     w[i, j] = exp(-0.5 * dw2[i, j] / (rho^2))
   end
@@ -49,12 +53,12 @@ end
 #   z(ns x nt): latent variable with to unit Fréchet margins
 # Return:
 #   ll_y(ns x nt): loglikelihood matrix
-function logLikeY(y::Array{Integer, 2}, theta_star::Array{FloatingPoint, 2},
-                  alpha::FloatingPoint, z::Array{FloatingPoint, 2})
+function logpdf_rarebinary(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
+                           alpha::Float64, z::Array{Float64, 2})
   ns = size(y)[1]
   nt = size(y)[2]
 
-  ll_y = Array(FloatingPoint, ns, nt)
+  ll_y = Array(Float64, ns, nt)
   for j = 1:nt, i = 1:ns
     z_star = -theta_star[i, j] / (z[i, j]^(1 / alpha))
     ll_y[i, j] = (1 - y[i, j]) * z_star +
@@ -63,9 +67,9 @@ function logLikeY(y::Array{Integer, 2}, theta_star::Array{FloatingPoint, 2},
   return ll_y
 end
 
-function logLikeY!(ll::Array{FloatingPoint, 2}, y::Array{Integer, 2},
-                   theta_star::Array{FloatingPoint, 2}, alpha::FloatingPoint,
-                   z::Array{FloatingPoint, 2})
+function logpdf_rarebinary!(ll::Array{Float64, 2}, y::Array{Int64, 2},
+                            theta_star::Array{Float64, 2}, alpha::Float64,
+                            z::Array{Float64, 2})
   ns = size(y)[1]
   nt = size(y)[2]
 
@@ -76,21 +80,19 @@ function logLikeY!(ll::Array{FloatingPoint, 2}, y::Array{Integer, 2},
   end
 end
 
-
-
 # Arguments:
 #   w(ns x nknots): kernel weights
 #   a(nknots x nt): PS(alpha) random effect
 #   alpha(1): spatial dependence (0=dependent, 1=independent)
 # Return:
 #   theta_star(ns x nt): ∑ Aₗ * wₗ^(1/alpha)
-function getThetaStar(w::Array{FloatingPoint, 2}, a::Array{FloatingPoint, 2},
-                      alpha::FloatingPoint)
+function get_thetastar(w::Array{Float64, 2}, a::Array{Float64, 2},
+                       alpha::Float64)
   ns = size(w)[1]
   nknots = size(w)[2]
   nt = size(a)[2]
 
-  w_star = Array(FloatingPoint, ns, nknots)
+  w_star = Array(Float64, ns, nknots)
   for j = 1:nknots, i = 1:ns
     w_star[i, j] = w[i, j]^(1 / alpha)
   end
@@ -104,11 +106,11 @@ end
 #   x_beta(ns x nt): mean function
 # Return:
 #   z(ns x nt): latent variable with to unit Fréchet margins
-function getZ(xi::FloatingPoint, x_beta::Array{FloatingPoint, 2})
+function get_z(xi::Float64, x_beta::Array{Float64, 2})
   ns = size(x_beta)[1]
   nt = size(x_beta)[2]
 
-  z = Array(FloatingPoint, ns, nt)
+  z = Array(Float64, ns, nt)
   if xi != 0
     for j = 1:nt, i = 1:ns
       z[i, j] = (1 + xi * x_beta[i, j])^(1 / xi)
@@ -122,8 +124,8 @@ function getZ(xi::FloatingPoint, x_beta::Array{FloatingPoint, 2})
   return z
 end
 
-function updateZ!(z::Array{FloatingPoint, 2}, xi::FloatingPoint,
-                  x_beta::Array{FloatingPoint, 2})
+function update_z!(z::Array{Float64, 2}, xi::Float64,
+                  x_beta::Array{Float64, 2})
   ns = size(x_beta)[1]
   nt = size(x_beta)[2]
 
@@ -142,11 +144,11 @@ end
 
 # generating PS(alpha) from Stephenson(2003)
 # return psrv(n): vector of PS(alpha) random variables
-function rPS(n::Integer, alpha::FloatingPoint)
+function sample_pstab(n::Int64, alpha::Float64)
   unif = rand(n) * pi
   stdexp = rand(Distributions.Exponential(1), n)
 
-  psrv = Array(FloatingPoint, n)
+  psrv = Array(Float64, n)
   for i = 1:n
     log_a = (1 - alpha) / alpha * log(sin((1 - alpha) * unif[i])) +
            log(sin(alpha * unif[i])) - (1 - alpha) / alpha * log(stdexp[i]) -
@@ -159,50 +161,59 @@ end
 
 # generate dependent rare binary data
 # returns y(ns x nt): matrix of observations
-function rRareBinarySpat(x::Array{FloatingPoint, 3}, s::Array{FloatingPoint, 2},
-                         knots::Array{FloatingPoint, 2},
-                         beta::Array{FloatingPoint, 1},
-                         xi::FloatingPoint, alpha::FloatingPoint,
-                         rho::FloatingPoint, thresh::FloatingPoint)
+function sample_rarebinary(x::Array{Float64, 3}, s::Array{Float64, 2},
+                           knots::Array{Float64, 2},
+                           beta::Array{Float64, 1},
+                           xi::Float64, alpha::Float64,
+                           rho::Float64, thresh::Float64)
   ns = size(x)[1]
   nt = size(x)[2]
   np = size(x)[3]
   nknots = size(knots)[1]
+  y = Array(Int64, ns, nt)
 
-  x_beta = Array(FloatingPoint, ns, nt)
+  x_beta = Array(Float64, ns, nt)
   for t = 1:nt
     x_beta[:, t] = reshape(x[:, t, :], ns, np) * beta
   end
 
   # get weights
-  dw2 = Array(FloatingPoint, ns, nknots)
+  dw2 = Array(Float64, ns, nknots)
   for j = 1:nknots, i = 1:ns
-    dw2[i, j] = sqeuclidean(vec(s[i, :]), vec(knots[j, :]))
+    dw2[i, j] = Distances.sqeuclidean(vec(s[i, :]), vec(knots[j, :]))
   end
 
-  w = makeW(dw2, rho)
-  stdW!(w)
+  w = make_w(dw2, rho)
+  std_w!(w)
 
-  # get random effects and theta_star
-  a = reshape(rPS(nknots * nt, alpha), nknots, nt)
-  theta_star = getThetaStar(w, a, alpha)
-
-
-  # get underlying latent variable u ~ GEV(1, alpha, alpha)
-  y = Array(Integer, ns, nt)
-  for j = 1:nt, i = 1:ns
-    u = rand(Frechet(), 1)[1]^alpha
-    z = u * theta_star[i, j]^alpha
-    h = x_beta[i, j] + (z^xi - 1) / xi
-    y[i, j] = h > thresh ? 1 : 0
+  # get GEV(1, 1, 1) marginally
+  # z = u * theta is marginally GEV(1, 1, 1) when
+  #   u ~ GEV(1, alpha, alpha)
+  #   theta = (sum A_l w_l^(1/alpha))^alpha
+  #   A_l ~ PS(alpha)
+  if alpha < 1
+    a = reshape(sample_pstab(nknots * nt, alpha), nknots, nt)
+    theta_star = get_thetastar(w, a, alpha)
+    for j = 1:nt, i = 1:ns
+      u = rand(Frechet(), 1)[1]^alpha
+      z = u * theta_star[i, j]^alpha
+      h = x_beta[i, j] + (z^xi - 1) / xi
+      y[i, j] = h > thresh ? 1 : 0
+    end
+  else
+    for j = 1:nt, i = 1:ns
+      z = rand(Frechet(), 1)
+      h = x_beta[i, j] + (z^xi - 1) / xi
+      y[i, j] = h > thresh ? 1 : 0
+    end
   end
 
   return y
 end
 
-function mhUpdate(acc::Integer, att::Integer, mh::FloatingPoint,
-                  nattempts=50, lower=0.8, upper=1.2)
 
+function mh_update(acc::Int64, att::Int64, mh::Float64,
+                  nattempts=50, lower=0.8, upper=1.2)
   acc_rate = acc / att
   if att > nattempts
     if acc_rate < 0.25
@@ -215,8 +226,6 @@ function mhUpdate(acc::Integer, att::Integer, mh::FloatingPoint,
   end
 
   return (acc, att, mh)
-
 end
-
 
 end
