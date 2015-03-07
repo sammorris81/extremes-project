@@ -3,23 +3,28 @@ export updateBeta, updateBeta!, sampleBeta, sampleBeta!
 
 using Distributions
 using AuxFunctions
-function updateBeta(y::Array{Int64}, theta_star::Array{Float64},
-                     alpha::Float64, z::Array{Float64}, beta::Array{Float64},
-                     beta_m::Array{Float64}, beta_s::Array{Float64}, xi::Float64,
-                     x::Array{Float64}, x_beta::Array{Float64}, cur_lly::Array{Float64},
-                     acc::Int64, att::Int64, mh::Array{Float64})
+
+function updateBeta(y::Array{Integer, 2}, theta_star::Array{FloatingPoint, 2},
+                     alpha::FloatingPoint, z::Array{FloatingPoint, 2},
+                     beta::Array{FloatingPoint, 1},
+                     beta_m::Array{FloatingPoint, 1},
+                     beta_s::Array{FloatingPoint, 1}, xi::FloatingPoint,
+                     x::Array{FloatingPoint, 3},
+                     x_beta::Array{FloatingPoint, 2},
+                     cur_lly::Array{FloatingPoint, 2},
+                     acc::Integer, att::Integer, mh::Array{FloatingPoint, 1})
   np = size(x)[3]
   ns = size(y)[1]
   nt = size(y)[2]
   att += 1
 
   # get candidate draws
-  can_beta = Array(Float64, 3)
+  can_beta = Array(FloatingPoint, 3)
   for i = 1:np
     can_beta[i] = rand(Distributions.Normal(beta[i], mh[i]))
   end
 
-  can_x_beta = Array(Float64, ns, nt)
+  can_x_beta = Array(FloatingPoint, ns, nt)
   for t = 1:nt
     can_x_beta[:, t] = reshape(x[:, t, :], ns, 3) * can_beta
   end
@@ -51,14 +56,20 @@ function updateBeta(y::Array{Int64}, theta_star::Array{Float64},
   return results
 end
 
-function updateBeta!(y::Array{Int64}, theta_star::Array{Float64}, alpha::Float64,
-                     z::Array{Float64}, can_z::Array{Float64},
-                     beta::Array{Float64}, can_beta::Array{Float64},
-                     beta_m::Array{Float64}, beta_s::Array{Float64},
-                     xi::Float64, x::Array{Float64},
-                     x_beta::Array{Float64}, can_x_beta::Array{Float64},
-                     cur_lly::Array{Float64}, can_lly::Array{Float64},
-                     acc::Int64, att::Int64, mh::Array{Float64}, candidate)
+function updateBeta!(y::Array{Integer, 2}, theta_star::Array{FloatingPoint, 2},
+                     alpha::FloatingPoint, z::Array{FloatingPoint, 2},
+                     can_z::Array{FloatingPoint, 2},
+                     beta::Array{FloatingPoint, 1},
+                     can_beta::Array{FloatingPoint, 1},
+                     beta_m::Array{FloatingPoint, 1},
+                     beta_s::Array{FloatingPoint, 1},
+                     xi::FloatingPoint, x::Array{FloatingPoint, 3},
+                     x_beta::Array{FloatingPoint, 2},
+                     can_x_beta::Array{FloatingPoint, 2},
+                     cur_lly::Array{FloatingPoint, 2},
+                     can_lly::Array{FloatingPoint, 2},
+                     acc::Integer, att::Integer, mh::Array{FloatingPoint, 1},
+                     candidate::Distribution)
   np = size(x)[3]::Int64
   ns = size(y)[1]::Int64
   nt = size(y)[2]::Int64
@@ -100,11 +111,15 @@ function updateBeta!(y::Array{Int64}, theta_star::Array{Float64}, alpha::Float64
   return
 end
 
-function sampleBeta(nreps::Int64, y::Array{Int64}, theta_star::Array{Float64},
-                    alpha::Float64, z::Array{Float64}, beta::Array{Float64},
-                    beta_m::Array{Float64}, beta_s::Array{Float64}, xi::Float64,
-                    x::Array{Float64}, x_beta::Array{Float64}, cur_lly::Array{Float64},
-                    acc_beta::Int64, att_beta::Int64, mh_beta::Array{Float64})
+function sampleBeta(nreps::Integer, y::Array{Integer, 2},
+                    theta_star::Array{FloatingPoint, 2}, alpha::FloatingPoint,
+                    z::Array{FloatingPoint, 2}, beta::Array{FloatingPoint, 1},
+                    beta_m::Array{FloatingPoint, 1},
+                    beta_s::Array{FloatintPoint, 1}, xi::FloatingPoint,
+                    x::Array{FloatingPoint, 3}, x_beta::Array{FloatingPoint, 2},
+                    cur_lly::Array{FloatingPoint, 2},
+                    acc_beta::Array{Integer, 1}, att_beta::Array{Integer, 1},
+                    mh_beta::Array{FloatintPoint, 1})
   np = size(x)[3]
   beta_keep = fill(0.0, nreps, np)
   for i = 1:nreps
@@ -125,23 +140,28 @@ function sampleBeta(nreps::Int64, y::Array{Int64}, theta_star::Array{Float64},
   return beta_keep
 end
 
-function sampleBeta!(nreps::Int64, y::Array{Int64}, theta_star::Array{Float64},
-                    alpha::Float64, z::Array{Float64}, beta::Array{Float64},
-                    beta_m::Array{Float64}, beta_s::Array{Float64}, xi::Float64,
-                    x::Array{Float64}, x_beta::Array{Float64}, cur_lly::Array{Float64},
-                    acc_beta::Int64, att_beta::Int64, mh_beta::Array{Float64})
+function sampleBeta!(nreps::Integer, y::Array{Integer, 2},
+                     theta_star::Array{FloatingPoint, 2}, alpha::FloatintPoint,
+                     z::Array{FloatingPoint, 2}, beta::Array{FloatingPoint, 1},
+                     beta_m::Array{FloatingPoint, 1},
+                     beta_s::Array{FloatingPoint, 1}, xi::FloatingPoint,
+                     x::Array{FloatingPoint, 3},
+                     x_beta::Array{FloatingPoint, 2},
+                     cur_lly::Array{FloatingPoint, 2},
+                     acc_beta::Array{Integer, 1}, att_beta::Array{Integer, 1},
+                     mh_beta::Array{FloatingPoint, 1})
   np = size(x)[3]
   ns = size(y)[1]
   nt = size(y)[2]
   beta_keep = fill(0.0, nreps, np)
   beta_can_dis = Normal(0, 1)
-  can_beta = Array(Float64, np)
+  can_beta = Array(FloatingPoint, np)
   # println(pointer(can_beta))
-  can_x_beta = Array(Float64, ns, nt)
+  can_x_beta = Array(FloatingPoint, ns, nt)
   # println(pointer(can_x_beta))
-  can_z = Array(Float64, ns, nt)
+  can_z = Array(FloatingPoint, ns, nt)
   # println(pointer(can_z))
-  can_lly = Array(Float64, ns, nt)
+  can_lly = Array(FloatingPoint, ns, nt)
   # println(pointer(can_lly))
   for i = 1:nreps
     beta_update = updateBeta!(y, theta_star, alpha, z, can_z,

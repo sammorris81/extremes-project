@@ -84,11 +84,15 @@ candidate = Normal(0, 1)
 @time getZ(xi, x_beta)
 @time updateZ!(xi, x_beta, z)
 
-pointer(acc)
+
 acc = 55
 att = 60
 mh = 0.5
 (acc, att, mh) = mhUpdate(acc, att, mh)
+
+@code_llvm mhUpdate(acc, att, mh)
+
+@code_llvm mhUpdate3(acc, att, mh)
 
 # initialize
 sampleBeta(1, y, theta_star, alpha, z, beta, beta_m, beta_s, xi,
@@ -251,3 +255,8 @@ x
 beta
 beta = fill(0.0, 3, 1)
 broadcast(*, x[:, 1, :], beta')
+
+typeof(size(x)[2])
+
+@time Array(FloatingPoint, 1000, 1000)
+@time fill(0.0, 1000, 1000)
