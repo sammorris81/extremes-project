@@ -73,8 +73,8 @@ y = rRareBinarySpat(x, s, knots, beta, xi, alpha, rho, 20)
 
 
 cur_lly = logLikeY(y, theta_star, alpha, z)
-acc_beta = 1
-att_beta = 1
+acc_beta = fill(1, 3)
+att_beta = fill(1, 3)
 mh_beta = fill(1.0, 3)
 
 nreps = 5000
@@ -104,8 +104,10 @@ sampleBeta(1, y, theta_star, alpha, z, beta, beta_m, beta_s, xi,
 
 @time updateBeta!(y, theta_star, alpha, z, beta, beta_m, beta_s, xi,
                      x, x_beta, cur_lly, acc_beta, att_beta, mh_beta, candidate)
-sampleBeta!(2, y, theta_star, alpha, z, beta, beta_m, beta_s, xi,
-            x, x_beta, cur_lly, acc_beta, att_beta, mh_beta)
+sampleBeta!(2, y, theta_star, alpha, z, beta, beta_m, beta_s, xi, x, x_beta,
+            cur_lly, acc_beta, att_beta, mh_beta)
+
+
 @time sampleBeta!(2000, y, theta_star, alpha, z, beta, beta_m, beta_s, xi,
                   x, x_beta, cur_lly, acc_beta, att_beta, mh_beta)
 Array(Float64, 3, 2)
@@ -201,11 +203,8 @@ end
   updateZ!(xi, x_beta, z)
 end
 
-sampleBeta!(2, y, theta_star, alpha, z, beta, beta_m, beta_s, xi,
+sampleBeta!(1, y, theta_star, alpha, z, beta, beta_m, beta_s, xi,
             x, x_beta, cur_lly, acc_beta, att_beta, mh_beta)
-
-
-
 
 
 pointer(x)
