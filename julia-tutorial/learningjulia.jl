@@ -56,3 +56,8 @@ x = linspace(0.01, 0.99, 10)  # from 0.01 to 0.99 with a length of 10
 # you can expand.grid in julia using
 x = hcat(linspace(0.01, 0.99, 10), inner=[1], outer=[10],
          linspace(0.01, 0.99, 10), inner=[10], outer=[1])
+
+# duplicating arrays
+x = fill(1.0, 100, 100)
+
+# by default julia copies

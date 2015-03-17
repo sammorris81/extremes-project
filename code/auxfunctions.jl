@@ -2,10 +2,12 @@ module AuxFunctions
 export std_w!,
        make_w,
        logpdf_rarebinary, logpdf_rarebinary!,
+       logpdf_ps!,
        get_z, update_z!,
        get_thetastar,
        sample_pstab,
        sample_rarebinary,
+       get_canxbeta!,
        mh_update
 
 using Distances
@@ -45,6 +47,16 @@ function make_w(dw2::Array{Float64, 2}, rho::Float64)
   return w
 end
 
+function get_canxbeta!(can_x_beta::Array{Float64, 2}, x_beta::Array{Float64, 2},
+                       x::Array{Float64, 3}, beta::Array{Float64, 1},
+                       can_beta::Float64, p::Int64)
+  ns = size(x_beta)[1]
+  nt = size(x_beta)[2]
+
+  for t = 1:nt, i = 1:ns
+    can_x_beta[i, t] = x_beta[i, t] + x[i, t, p] * (can_beta - beta[p])
+  end
+end
 
 # Arguments:
 #   y(ns x nt): data matrix (0s and 1s)
@@ -58,13 +70,14 @@ function logpdf_rarebinary(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
   ns = size(y)[1]
   nt = size(y)[2]
 
-  ll_y = Array(Float64, ns, nt)
+  ll = Array(Float64, ns, nt)
   for j = 1:nt, i = 1:ns
     z_star = -theta_star[i, j] / (z[i, j]^(1 / alpha))
-    ll_y[i, j] = (1 - y[i, j]) * z_star +
+    ll[i, j] = (1 - y[i, j]) * z_star +
                  y[i, j] * log(1 - exp(z_star))
   end
-  return ll_y
+
+  return ll
 end
 
 function logpdf_rarebinary!(ll::Array{Float64, 2}, y::Array{Int64, 2},
@@ -73,11 +86,53 @@ function logpdf_rarebinary!(ll::Array{Float64, 2}, y::Array{Int64, 2},
   ns = size(y)[1]
   nt = size(y)[2]
 
-  for j = 1:nt, i = 1:ns
-    z_star = -theta_star[i, j] / (z[i, j]^(1 / alpha))
-    ll[i, j] = (1 - y[i, j]) * z_star +
-                 y[i, j] * log(1 - exp(z_star))
+  for i = 1:nt * ns
+    z_star = -theta_star[i] / (z[i]^(1 / alpha))
+    if y[i] == 0
+      ll[i] = z_star
+    else
+      ll[i] = log(1 - exp(z_star))
+    end
   end
+end
+
+function logpdf_ps!(ll::Array{Float64, 2}, a::Array{Float64, 2}, alpha::Float64,
+                    mid_points::Array{Float64, 1}, bin_width::Array{Float64, 1})
+  nknots = size(a)[1]
+  nt = size(a)[2]
+
+  # fill!(ll, -Inf)
+  for t = 1:nt, k = 1:nknots
+    ll[k, t] = log(alpha) - log(1 - alpha) - (1 / (1 - alpha)) * log(a[k, t]) +
+               ld(a[k, t], alpha, mid_points, bin_width)
+  end
+end
+
+function logpdf_ps(a::Float64, alpha::Float64,
+                    mid_points::Array{Float64, 1}, bin_width::Array{Float64, 1})
+  nknots = size(a)[1]
+  nt = size(a)[2]
+
+  # fill!(ll, -Inf)
+  ll = log(alpha) - log(1 - alpha) - (1 / (1 - alpha)) * log(a) +
+               ld(a, alpha, mid_points, bin_width)
+  return ll
+end
+
+# integral part of density
+function ld(a::Float64, alpha::Float64, mid_points::Array{Float64, 1},
+             bin_width::Array{Float64, 1})
+  nbins = size(mid_points)[1]
+  integral = 0.0
+  for i = 1:nbins
+    psi = pi * mid_points[i]
+    c = (sin(alpha * psi) / sin(psi))^(1 / (1 - alpha)) *
+        sin((1 - alpha) * psi) / sin(alpha * psi)
+    logint = log(c) - c * (1 / a^(alpha  / (1 - alpha)))
+    integral += exp(logint) * bin_width[i]
+  end
+
+  return log(integral)
 end
 
 # Arguments:
@@ -106,18 +161,18 @@ end
 #   x_beta(ns x nt): mean function
 # Return:
 #   z(ns x nt): latent variable with to unit Fréchet margins
-function get_z(xi::Float64, x_beta::Array{Float64, 2})
+function get_z(xi::Float64, x_beta::Array{Float64, 2}, thresh::Float64)
   ns = size(x_beta)[1]
   nt = size(x_beta)[2]
 
   z = Array(Float64, ns, nt)
   if xi != 0
-    for j = 1:nt, i = 1:ns
-      z[i, j] = (1 + xi * x_beta[i, j])^(1 / xi)
+    for i = 1:nt * ns
+      z[i] = (1 + xi * (thresh - x_beta[i]))^(1 / xi)
     end
   else
-    for j = 1:nt, i = 1:ns
-      z[i, j] = exp(x_beta[i, j])
+    for i = 1:nt * ns
+      z[i] = exp(thresh - x_beta[i])
     end
   end
 
@@ -125,17 +180,19 @@ function get_z(xi::Float64, x_beta::Array{Float64, 2})
 end
 
 function update_z!(z::Array{Float64, 2}, xi::Float64,
-                  x_beta::Array{Float64, 2})
+                  x_beta::Array{Float64, 2}, thresh::Float64)
   ns = size(x_beta)[1]
   nt = size(x_beta)[2]
 
+  # the loop here is way faster than vectorized code and allocates far
+  # less memory
   if xi != 0
-    for j = 1:nt, i = 1:ns
-      z[i, j] = (1 + xi * x_beta[i, j])^(1 / xi)
+    for i = 1:nt * ns
+      z[i] = (1 + xi * (thresh - x_beta[i]))^(1 / xi)
     end
   else
-    for j = 1:nt, i = 1:ns
-      z[i, j] = exp(x_beta[i, j])
+    for i = 1:nt * ns
+      z[i] = exp(thresh - x_beta[i])
     end
   end
 
@@ -200,25 +257,26 @@ function sample_rarebinary(x::Array{Float64, 3}, s::Array{Float64, 2},
       h = x_beta[i, j] + (z^xi - 1) / xi
       y[i, j] = h > thresh ? 1 : 0
     end
+    return (y, a)
   else
     for j = 1:nt, i = 1:ns
-      z = rand(Frechet(), 1)
+      z = rand(Frechet(), 1)[1]
       h = x_beta[i, j] + (z^xi - 1) / xi
       y[i, j] = h > thresh ? 1 : 0
     end
+    return y
   end
 
-  return y
 end
 
 
-function mh_update(acc::Int64, att::Int64, mh::Float64,
-                  nattempts=50, lower=0.8, upper=1.2)
-  acc_rate = acc / att
+function mh_update(att::Int64, acc::Int64, mh::Float64,
+                  nattempts::Int64, lower::Float64, upper::Float64)
+  # acc_rate = acc / att
   if att > nattempts
-    if acc_rate < 0.25
+    if acc / att < 0.25
       mh *= lower
-    elseif acc_rate > 0.50
+    elseif acc / att > 0.50
       mh *= upper
     end
     acc = 0
@@ -226,6 +284,16 @@ function mh_update(acc::Int64, att::Int64, mh::Float64,
   end
 
   return (acc, att, mh)
+end
+
+function get_level(a::Float64, cuts::Array{Float64, 1})
+  lev = 1
+  ncuts = size(cuts)[1]
+  for i = 1:ncuts
+    lev = a > cuts[i] ? i + 1 : lev
+  end
+
+  return lev
 end
 
 end
