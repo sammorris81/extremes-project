@@ -20,9 +20,10 @@ function update_beta!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
                      att::Array{Int64, 1}, acc::Array{Int64, 1},
                      mh::Array{Float64, 1}, thresh::Float64,
                      candidate::Distribution)
-  np = size(x)[3]
-  ns = size(y)[1]
-  nt = size(y)[2]
+
+  const ns = size(y)[1]
+  const nt = size(y)[2]
+  const np = size(x)[3]
 
   # get candidate draws
   for p = 1:np
@@ -30,15 +31,18 @@ function update_beta!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
     can_beta = beta[p] + mh[p] * rand(candidate, 1)[1]
 
     # faster than reshape because it doesn't need to make a copy
-    for t = 1:nt, i = 1:ns
-      can_x_beta[i, t] = x_beta[i, t] + x[i, t, p] * (can_beta - beta[p])
-    end
-
-    update_z!(can_z, xi, can_x_beta, thresh)
-    logpdf_rarebinary!(can_lly, y, theta_star, alpha, can_z)
+    can_diff = can_beta - beta[p]
+    # @time for t = 1:nt, i = 1:ns
+    #   can_x_beta[i, t] = x_beta[i, t] + can_diff * x[i, t, p]
+    # end
+    # get_canxbeta!(can_x_beta, x_beta, slice(x, :, :, p), can_diff, ns, nt)
+    # get_canxbeta!(can_x_beta, x_beta, sub(x, :, :, p), can_diff, ns, nt)
+    get_canxbeta!(can_x_beta, x_beta, x[:, :, p], can_diff, ns, nt)
+    update_z!(can_z, xi, can_x_beta, thresh, ns, nt)
+    logpdf_rarebinary!(can_lly, y, theta_star, alpha, can_z, ns, nt)
 
     prior = Distributions.Normal(beta_m[p], beta_s[p])
-    # > 64k memory for summing over can_lly and cur_llys
+    # > 64k memory for summing over can_lly and cur_lly
     R = sum(can_lly - cur_lly) +
         logpdf(prior, can_beta) - logpdf(prior, beta[p])
 
@@ -54,7 +58,60 @@ function update_beta!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
       acc[p] += 1
     end
   end
+
 end
+
+function update_beta!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
+                     alpha::Float64, z::Array{Float64, 2},
+                     can_z::Array{Float64, 2},
+                     beta::Array{Float64, 1},
+                     beta_m::Array{Float64, 1},
+                     beta_s::Array{Float64, 1},
+                     xi::Float64, x::Array{Float64, 3},
+                     x_beta::Array{Float64, 2},
+                     can_x_beta::Array{Float64, 2},
+                     cur_lly::Array{Float64, 2},
+                     can_lly::Array{Float64, 2},
+                     att::Array{Int64, 1}, acc::Array{Int64, 1},
+                     mh::Array{Float64, 1}, thresh::Float64,
+                     candidate::Distribution, ns::Int64, nt::Int64, np::Int64)
+
+  # get candidate draws
+  for p = 1:np
+    att[p] += 1
+    can_beta = beta[p] + mh[p] * rand(candidate, 1)[1]
+
+    # faster than reshape because it doesn't need to make a copy
+    can_diff = can_beta - beta[p]
+    # @time for t = 1:nt, i = 1:ns
+    #   can_x_beta[i, t] = x_beta[i, t] + can_diff * x[i, t, p]
+    # end
+    get_canxbeta!(can_x_beta, x_beta, slice(x, :, :, p), can_diff, ns, nt)
+    # get_canxbeta!(can_x_beta, x_beta, sub(x, :, :, p), can_diff, ns, nt)
+    # get_canxbeta!(can_x_beta, x_beta, x[:, :, p], can_diff, ns, nt)
+    update_z!(can_z, xi, can_x_beta, thresh, ns, nt)
+    logpdf_rarebinary!(can_lly, y, theta_star, alpha, can_z, ns, nt)
+
+    prior = Distributions.Normal(beta_m[p], beta_s[p])
+    # > 64k memory for summing over can_lly and cur_lly
+    R = sum(can_lly - cur_lly) +
+        logpdf(prior, can_beta) - logpdf(prior, beta[p])
+
+    if (length(R) > 1)
+      error("R has length greater than 1")
+    end
+
+    if (log(rand(1)[1]) < R)  # rand generates a vector
+      beta[p] = can_beta
+      copy!(x_beta, can_x_beta)
+      copy!(z, can_z)
+      copy!(cur_lly, can_lly)
+      acc[p] += 1
+    end
+  end
+
+end
+
 
 
 # function update_beta_1!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
@@ -160,33 +217,33 @@ end
 # for testing timing of update_beta!
 function sample_beta!(nreps::Int64, y::Array{Int64, 2},
                       theta_star::Array{Float64, 2}, alpha::Float64,
-                      z::Array{Float64, 2}, beta::Array{Float64, 1},
-                      beta_m::Array{Float64, 1},
-                      beta_s::Array{Float64, 1}, xi::Float64,
-                      x::Array{Float64, 3},
-                      x_beta::Array{Float64, 2},
-                      cur_lly::Array{Float64, 2},
-                      att_beta::Array{Int64, 1}, acc_beta::Array{Int64, 1},
-                      mh_beta::Array{Float64, 1}, thresh::Float64)
-  np = size(x)[3]
-  ns = size(y)[1]
-  nt = size(y)[2]
+                      xi::Float64, x::Array{Float64, 3},
+                      thresh::Float64, ns::Int64, nt::Int64, np::Int64)
   beta_keep = fill(0.0, nreps, np)
+
+  beta = [0.0, 0.0, 0.0]
+  can_beta = copy(beta)
+  x_beta = fill(0.0, ns, nt)
+  can_x_beta = copy(x_beta)
+  z = get_z(xi_t, x_beta, thresh)
+  can_z = copy(z)
+  cur_lly = logpdf_rarebinary(y, theta_star_t, alpha_t, z)
+  can_lly = copy(cur_lly)
+
+  beta_m = [0.0, 0.0, 0.0]
+  beta_s = [10.0, 10.0, 10.0]
   beta_can_dis = Normal(0, 1)
-  can_beta = Array(Float64, np)
-  # println(pointer(can_beta))
-  can_x_beta = Array(Float64, ns, nt)
-  # println(pointer(can_x_beta))
-  can_z = Array(Float64, ns, nt)
-  # println(pointer(can_z))
-  can_lly = Array(Float64, ns, nt)
-  # println(pointer(can_lly))
+
+  att_beta = fill(1, 3)
+  acc_beta = fill(1, 3)
+  mh_beta = fill(0.1, 3)
+
   for i = 1:nreps
     beta_update = update_beta!(y, theta_star, alpha, z, can_z,
                               beta, beta_m, beta_s, xi,
                               x, x_beta, can_x_beta, cur_lly, can_lly,
                               acc_beta, att_beta, mh_beta, thresh,
-                              beta_can_dis)
+                              beta_can_dis, ns, nt, np)
     beta_keep[i, :] = beta
     if i % 500 == 0
       println(i)

@@ -18,8 +18,8 @@ using Distributions
 # Returns:
 #   std_w(ns x nknots): kernel weights standardized to add to 1
 function std_w!(w::Array{Float64, 2})
-  ns = size(w)[1]
-  nknots = size(w)[2]
+  const ns = size(w)[1]
+  const nknots = size(w)[2]
 
   total_weight = sum(w, 2)
   for j=1:nknots
@@ -36,8 +36,8 @@ end
 # Return:
 #   w(ns x nknots): kernel weights
 function make_w(dw2::Array{Float64, 2}, rho::Float64)
-  ns = size(dw2)[1]
-  nknots = size(dw2)[2]
+  const ns = size(dw2)[1]
+  const nknots = size(dw2)[2]
 
   w = Array(Float64, ns, nknots)
   for j = 1:nknots, i = 1:ns
@@ -48,15 +48,33 @@ function make_w(dw2::Array{Float64, 2}, rho::Float64)
 end
 
 function get_canxbeta!(can_x_beta::Array{Float64, 2}, x_beta::Array{Float64, 2},
-                       x::Array{Float64, 3}, beta::Array{Float64, 1},
-                       can_beta::Float64, p::Int64)
-  ns = size(x_beta)[1]
-  nt = size(x_beta)[2]
+                       x::Array{Float64, 2}, can_diff::Float64)
+  const ns = size(x_beta)[1]
+  const nt = size(x_beta)[2]
 
   for t = 1:nt, i = 1:ns
-    can_x_beta[i, t] = x_beta[i, t] + x[i, t, p] * (can_beta - beta[p])
+    can_x_beta[i, t] = x_beta[i, t] + can_diff * x[i, t]
   end
 end
+
+function get_canxbeta!(can_x_beta::Array{Float64, 2}, x_beta::Array{Float64, 2},
+                       x::Array{Float64, 2}, can_diff::Float64,
+                       ns::Int64, nt::Int64)
+
+  for t = 1:nt, i = 1:ns
+    can_x_beta[i, t] = x_beta[i, t] + can_diff * x[i, t]
+  end
+end
+
+function get_canxbeta!(can_x_beta::Array{Float64, 2}, x_beta::Array{Float64, 2},
+                       x::SubArray{Float64, 2}, can_diff::Float64,
+                       ns::Int64, nt::Int64)
+
+  for t = 1:nt, i = 1:ns
+    can_x_beta[i, t] = x_beta[i, t] + can_diff * x[i, t]
+  end
+end
+
 
 # Arguments:
 #   y(ns x nt): data matrix (0s and 1s)
@@ -67,8 +85,8 @@ end
 #   ll_y(ns x nt): loglikelihood matrix
 function logpdf_rarebinary(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
                            alpha::Float64, z::Array{Float64, 2})
-  ns = size(y)[1]
-  nt = size(y)[2]
+  const ns = size(y)[1]
+  const nt = size(y)[2]
 
   ll = Array(Float64, ns, nt)
   for j = 1:nt, i = 1:ns
@@ -83,8 +101,22 @@ end
 function logpdf_rarebinary!(ll::Array{Float64, 2}, y::Array{Int64, 2},
                             theta_star::Array{Float64, 2}, alpha::Float64,
                             z::Array{Float64, 2})
-  ns = size(y)[1]
-  nt = size(y)[2]
+  const ns = size(y)[1]
+  const nt = size(y)[2]
+
+  for i = 1:nt * ns
+    z_star = -theta_star[i] / (z[i]^(1 / alpha))
+    if y[i] == 0
+      ll[i] = z_star
+    else
+      ll[i] = log(1 - exp(z_star))
+    end
+  end
+end
+
+function logpdf_rarebinary!(ll::Array{Float64, 2}, y::Array{Int64, 2},
+                            theta_star::Array{Float64, 2}, alpha::Float64,
+                            z::Array{Float64, 2}, ns::Int64, nt::Int64)
 
   for i = 1:nt * ns
     z_star = -theta_star[i] / (z[i]^(1 / alpha))
@@ -98,8 +130,8 @@ end
 
 function logpdf_ps!(ll::Array{Float64, 2}, a::Array{Float64, 2}, alpha::Float64,
                     mid_points::Array{Float64, 1}, bin_width::Array{Float64, 1})
-  nknots = size(a)[1]
-  nt = size(a)[2]
+  const nt = size(ll)[2]
+  const nknots = size(ll)[1]
 
   # fill!(ll, -Inf)
   for t = 1:nt, k = 1:nknots
@@ -109,9 +141,7 @@ function logpdf_ps!(ll::Array{Float64, 2}, a::Array{Float64, 2}, alpha::Float64,
 end
 
 function logpdf_ps(a::Float64, alpha::Float64,
-                    mid_points::Array{Float64, 1}, bin_width::Array{Float64, 1})
-  nknots = size(a)[1]
-  nt = size(a)[2]
+                   mid_points::Array{Float64, 1}, bin_width::Array{Float64, 1})
 
   # fill!(ll, -Inf)
   ll = log(alpha) - log(1 - alpha) - (1 / (1 - alpha)) * log(a) +
@@ -143,9 +173,8 @@ end
 #   theta_star(ns x nt): ∑ Aₗ * wₗ^(1/alpha)
 function get_thetastar(w::Array{Float64, 2}, a::Array{Float64, 2},
                        alpha::Float64)
-  ns = size(w)[1]
-  nknots = size(w)[2]
-  nt = size(a)[2]
+  const ns = size(w)[1]
+  const nknots = size(w)[2]
 
   w_star = Array(Float64, ns, nknots)
   for j = 1:nknots, i = 1:ns
@@ -162,8 +191,8 @@ end
 # Return:
 #   z(ns x nt): latent variable with to unit Fréchet margins
 function get_z(xi::Float64, x_beta::Array{Float64, 2}, thresh::Float64)
-  ns = size(x_beta)[1]
-  nt = size(x_beta)[2]
+  const ns = size(x_beta)[1]
+  const nt = size(x_beta)[2]
 
   z = Array(Float64, ns, nt)
   if xi != 0
@@ -181,8 +210,8 @@ end
 
 function update_z!(z::Array{Float64, 2}, xi::Float64,
                   x_beta::Array{Float64, 2}, thresh::Float64)
-  ns = size(x_beta)[1]
-  nt = size(x_beta)[2]
+  const ns = size(x_beta)[1]
+  const nt = size(x_beta)[2]
 
   # the loop here is way faster than vectorized code and allocates far
   # less memory
@@ -198,6 +227,24 @@ function update_z!(z::Array{Float64, 2}, xi::Float64,
 
 end
 
+
+function update_z!(z::Array{Float64, 2}, xi::Float64,
+                  x_beta::Array{Float64, 2}, thresh::Float64,
+                  ns::Int64, nt::Int64)
+
+  # the loop here is way faster than vectorized code and allocates far
+  # less memory
+  if xi != 0
+    for i = 1:nt * ns
+      z[i] = (1 + xi * (thresh - x_beta[i]))^(1 / xi)
+    end
+  else
+    for i = 1:nt * ns
+      z[i] = exp(thresh - x_beta[i])
+    end
+  end
+
+end
 
 # generating PS(alpha) from Stephenson(2003)
 # return psrv(n): vector of PS(alpha) random variables
@@ -223,10 +270,11 @@ function sample_rarebinary(x::Array{Float64, 3}, s::Array{Float64, 2},
                            beta::Array{Float64, 1},
                            xi::Float64, alpha::Float64,
                            rho::Float64, thresh::Float64)
-  ns = size(x)[1]
-  nt = size(x)[2]
-  np = size(x)[3]
-  nknots = size(knots)[1]
+  const ns = size(x)[1]
+  const nt = size(x)[2]
+  const np = size(x)[3]
+  const nknots = size(knots)[1]
+
   y = Array(Int64, ns, nt)
 
   x_beta = Array(Float64, ns, nt)

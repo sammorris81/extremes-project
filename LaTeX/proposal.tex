@@ -1,0 +1,50 @@
+\documentclass[11pt]{article}
+\usepackage{amssymb, amsthm, amsmath}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage[authoryear]{natbib}
+\usepackage{bm}
+\usepackage{verbatim}
+\usepackage{lineno}
+\usepackage{times}
+\usepackage{soul}
+\usepackage{color}
+
+\usepackage[left=1in,top=1in,right=1in]{geometry}
+\pdfpageheight 11in
+\pdfpagewidth 8.5in
+\linespread{1.0}
+\input{mycommands.sty}
+
+
+\begin{document}
+
+\begin{center}
+{\Large {\bf Project Proposal} \\ Sam Morris \\ ST 810 }\\
+\today
+\end{center}
+
+
+\section*{Project description}\label{s:intro}
+In this project, I plan to do a data analysis of terrorist attacks in South / Central America, Europe, Africa, and Asia.
+More specifically, I plan to look at two different outcomes related to terrorist attacks.
+The first of these outcomes is the number of casualities.
+The second of these outcomes is ransoms demanded and paid for the attacks.
+For each of the outcomes, I plan to examine whether there is evidence to suggest that there have been changes over time as well as if there are differences between the regions of interest.
+
+\section*{Data}
+The data for this project come from the Global Terrorism Database ({\tt http://www.start.umd.edu/gtd/}), a database of all worldwide terrorist attacks from 1970 -- 2013 except for 1993.
+This database includes information for over 125,000 terrorist attacks throughout the world.
+I will only be considering events in South / Central America, Europe, Africa, and Asia because these continents contain many smaller countries.
+North America, Australasia, and Oceania will not be considered.
+
+\section*{Analysis}
+First, maxima for each variable of interest will be computed for each region of interest.
+Then, the regional annual maxima will be fit using a Generalized Extreme Value distribution (GEV).
+I will also explore model fits using time-varying location and scale parameters for the GEV.
+
+% \bibliographystyle{rss}
+% \bibliography{skewnormal}
+
+\end{document}
+

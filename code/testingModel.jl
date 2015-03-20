@@ -12,20 +12,20 @@ using ProfileView
 using AuxFunctions
 using UpdateModel
 
-
-ns = 200
-nt = 40
+const ns = 200
+const nt = 40
 s = hcat(rand(ns), rand(ns))
 x = fill(1.0, ns, nt, 3)
 for t = 1:nt
   x[:, t, 2] = s[:, 1]
   x[:, t, 3] = s[:, 2]
 end
+const np = 3
 # replaces expand.grid from R
 knots_x = linspace(0.01, 0.99, 9)
 knots = hcat(repeat(knots_x, inner=[1], outer=[9]),
              repeat(knots_x, inner=[9], outer=[1]))
-nknots = size(knots)[1]
+const nknots = size(knots)[1]
 
 # testing update for beta
 nreps = 2000
@@ -55,13 +55,17 @@ acc_beta = fill(1, 3)
 mh_beta = fill(0.1, 3)
 candidate_beta = Normal(0, 1)
 
+@time sub(x, :, :, 1)
+@time slice(x, :, :, 1)
+@time x[:, :, 1]
+
 update_beta!(y, theta_star_t, alpha_t, z, can_z, beta,
                beta_m, beta_s, xi_t, x, x_beta, can_x_beta, cur_lly, can_lly,
                att_beta, acc_beta, mh_beta, thresh, candidate_beta)
 
 #storage
 beta_keep = fill(0.0, nreps, 3)
-@time for i = 1:nreps
+for i = 1:nreps
   update_beta!(y, theta_star_t, alpha_t, z, can_z, beta,
                beta_m, beta_s, xi_t, x, x_beta, can_x_beta, cur_lly, can_lly,
                att_beta, acc_beta, mh_beta, thresh, candidate_beta)
