@@ -81,3 +81,6 @@ beta_keep = fill(0.0, nreps, 3)
     println("Iter")
   end
 end
+
+using Gadfly
+plot(x=1:nreps, y=beta_keep[:, 1], Geom.line)
