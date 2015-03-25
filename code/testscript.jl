@@ -8,9 +8,9 @@ using Distances
 using ProfileView
 
 # constants
-global ns = 200
-global nt = 40
-global np = 3
+const ns = 200
+const nt = 40
+const np = 3
 # replaces expand.grid from R
 const knots_x = linspace(0.01, 0.99, 9)
 const knots = hcat(repeat(knots_x, inner=[1], outer=[9]),
@@ -65,7 +65,7 @@ beta_keep = fill(0.0, nreps, 3)
 @time for i = 1:nreps
   update_beta!(y, theta_star_t, alpha_t, z, can_z, beta,
                beta_m, beta_s, xi_t, x, x_beta, can_x_beta, cur_lly, can_lly,
-               att_beta, acc_beta, mh_beta, thresh, candidate_beta, ns, nt, np)
+               att_beta, acc_beta, mh_beta, thresh, candidate_beta)
   beta_keep[i, :] = beta
 
   if i < (burn / 2)

@@ -43,3 +43,5 @@ const y = sample_rarebinary(x, s, knots, beta_t, xi_t, alpha_t, rho_t, thresh)
 @time sample_beta!(1, y, theta_star_t, alpha_t, xi_t, x, thresh, ns, nt, np)
 
 @time sample_beta!(2000, y, theta_star_t, alpha_t, xi_t, x, thresh, ns, nt, np)
+
+

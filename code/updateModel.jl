@@ -21,9 +21,8 @@ function update_beta!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
                      mh::Array{Float64, 1}, thresh::Float64,
                      candidate::Distribution)
 
-  const ns = size(y)[1]
-  const nt = size(y)[2]
-  const np = size(x)[3]
+  ns, nt = size(y)
+  np = size(x)[3]
 
   # get candidate draws
   for p = 1:np
@@ -43,7 +42,7 @@ function update_beta!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
 
     prior = Distributions.Normal(beta_m[p], beta_s[p])
     # > 64k memory for summing over can_lly and cur_lly
-    R = sum(can_lly - cur_lly) +
+    R = sum(can_lly) - sum(cur_lly) +
         logpdf(prior, can_beta) - logpdf(prior, beta[p])
 
     if (length(R) > 1)
@@ -60,6 +59,54 @@ function update_beta!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
   end
 
 end
+
+function update_beta2!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
+                       x::Array{Float64, 3},
+                       z::Array{Float64, 2}, can_z::Array{Float64, 2},
+                       x_beta::Array{Float64, 2}, can_x_beta::Array{Float64, 2},
+                       cur_lly::Array{Float64, 2}, can_lly::Array{Float64, 2},
+                       alpha::MetropolisScalar,
+                       beta::MetropolisVector,
+                       xi::MetropolisScalar,
+                       thresh::Float64)
+
+  ns, nt = size(y)
+  np = size(x)[3]
+
+  # get candidate draws
+  for p = 1:np
+    drawcandidate!(beta, p)
+    can_diff = beta.can[p] - beta.cur[p]
+    get_canxbeta!(can_x_beta, x_beta, x[:, :, p], can_diff, ns, nt)
+    update_z!(can_z, xi.cur, can_x_beta, thresh, ns, nt)
+    logpdf_rarebinary!(can_lly, y, theta_star, alpha.cur, can_z, ns, nt)
+
+    # > 64k memory for summing over can_lly and cur_lly
+    R = sum(can_lly) - sum(cur_lly) +
+        logpdf(beta.priordist, beta.can[p]) -
+        logpdf(beta.priordist, beta.cur[p])
+
+    if (length(R) > 1)
+      error("R has length greater than 1")
+    end
+
+    if (log(rand(1)[1]) < R)  # rand generates a vector
+      updatecurrent!(beta, p)
+      copy!(x_beta, can_x_beta)
+      copy!(z, can_z)
+      copy!(cur_lly, can_lly)
+    end
+  end
+
+end
+
+# options to update xbeta
+# @time for t = 1:nt, i = 1:ns
+#   can_x_beta[i, t] = x_beta[i, t] + can_diff * x[i, t, p]
+# end
+# get_canxbeta!(can_x_beta, x_beta, slice(x, :, :, p), can_diff, ns, nt)
+# get_canxbeta!(can_x_beta, x_beta, sub(x, :, :, p), can_diff, ns, nt)
+
 
 function update_beta!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
                      alpha::Float64, z::Array{Float64, 2},
@@ -86,15 +133,15 @@ function update_beta!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
     # @time for t = 1:nt, i = 1:ns
     #   can_x_beta[i, t] = x_beta[i, t] + can_diff * x[i, t, p]
     # end
-    get_canxbeta!(can_x_beta, x_beta, slice(x, :, :, p), can_diff, ns, nt)
+    # get_canxbeta!(can_x_beta, x_beta, slice(x, :, :, p), can_diff, ns, nt)
     # get_canxbeta!(can_x_beta, x_beta, sub(x, :, :, p), can_diff, ns, nt)
-    # get_canxbeta!(can_x_beta, x_beta, x[:, :, p], can_diff, ns, nt)
+    get_canxbeta!(can_x_beta, x_beta, x[:, :, p], can_diff, ns, nt)
     update_z!(can_z, xi, can_x_beta, thresh, ns, nt)
-    logpdf_rarebinary!(can_lly, y, theta_star, alpha, can_z, ns, nt)
+    logpdf_rarebinary!(can_lly, y, theta_star, alpha, can_z)
 
     prior = Distributions.Normal(beta_m[p], beta_s[p])
     # > 64k memory for summing over can_lly and cur_lly
-    R = sum(can_lly - cur_lly) +
+    R = sum(can_lly) - sum(cur_lly) +
         logpdf(prior, can_beta) - logpdf(prior, beta[p])
 
     if (length(R) > 1)
@@ -225,9 +272,9 @@ function sample_beta!(nreps::Int64, y::Array{Int64, 2},
   can_beta = copy(beta)
   x_beta = fill(0.0, ns, nt)
   can_x_beta = copy(x_beta)
-  z = get_z(xi_t, x_beta, thresh)
+  z = get_z(xi, x_beta, thresh)
   can_z = copy(z)
-  cur_lly = logpdf_rarebinary(y, theta_star_t, alpha_t, z)
+  cur_lly = logpdf_rarebinary(y, theta_star, alpha, z)
   can_lly = copy(cur_lly)
 
   beta_m = [0.0, 0.0, 0.0]

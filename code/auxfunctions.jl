@@ -70,9 +70,10 @@ function get_canxbeta!(can_x_beta::Array{Float64, 2}, x_beta::Array{Float64, 2},
                        x::SubArray{Float64, 2}, can_diff::Float64,
                        ns::Int64, nt::Int64)
 
-  for t = 1:nt, i = 1:ns
-    can_x_beta[i, t] = x_beta[i, t] + can_diff * x[i, t]
-  end
+  # for t = 1:nt, i = 1:ns
+  #   can_x_beta[i, t] = x_beta[i, t] + can_diff * x[i, t]
+  # end
+  copy!(can_x_beta, x_beta + can_diff * x)
 end
 
 
@@ -91,8 +92,11 @@ function logpdf_rarebinary(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
   ll = Array(Float64, ns, nt)
   for j = 1:nt, i = 1:ns
     z_star = -theta_star[i, j] / (z[i, j]^(1 / alpha))
-    ll[i, j] = (1 - y[i, j]) * z_star +
-                 y[i, j] * log(1 - exp(z_star))
+    if y[i, j] == 0
+      ll[i, j] = z_star
+    else
+      ll[i, j] = log(1 - exp(z_star))
+    end
   end
 
   return ll
@@ -101,8 +105,8 @@ end
 function logpdf_rarebinary!(ll::Array{Float64, 2}, y::Array{Int64, 2},
                             theta_star::Array{Float64, 2}, alpha::Float64,
                             z::Array{Float64, 2})
-  const ns = size(y)[1]
-  const nt = size(y)[2]
+  ns = size(y)[1]
+  nt = size(y)[2]
 
   for i = 1:nt * ns
     z_star = -theta_star[i] / (z[i]^(1 / alpha))
