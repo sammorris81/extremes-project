@@ -66,16 +66,6 @@ function get_canxbeta!(can_x_beta::Array{Float64, 2}, x_beta::Array{Float64, 2},
   end
 end
 
-function get_canxbeta!(can_x_beta::Array{Float64, 2}, x_beta::Array{Float64, 2},
-                       x::SubArray{Float64, 2}, can_diff::Float64,
-                       ns::Int64, nt::Int64)
-
-  # for t = 1:nt, i = 1:ns
-  #   can_x_beta[i, t] = x_beta[i, t] + can_diff * x[i, t]
-  # end
-  copy!(can_x_beta, x_beta + can_diff * x)
-end
-
 
 # Arguments:
 #   y(ns x nt): data matrix (0s and 1s)

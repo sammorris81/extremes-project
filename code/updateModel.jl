@@ -76,9 +76,11 @@ function update_beta2!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
   # get candidate draws
   for p = 1:np
     drawcandidate!(beta, p)
+
+    # update different parts
     can_diff = beta.can[p] - beta.cur[p]
-    get_canxbeta!(can_x_beta, x_beta, x[:, :, p], can_diff, ns, nt)
-    update_z!(can_z, xi.cur, can_x_beta, thresh, ns, nt)
+    getcanxbeta!(can_x_beta, x_beta, x[:, :, p], can_diff, ns, nt)
+    getcanz!(can_z, xi.cur, can_x_beta, thresh, ns, nt)
     logpdf_rarebinary!(can_lly, y, theta_star, alpha.cur, can_z, ns, nt)
 
     # > 64k memory for summing over can_lly and cur_lly
