@@ -9,11 +9,12 @@ abstract MetropolisParameter <: ParameterType
 # would be nice to have non-normal candidates
 
 type MetropolisScalar <: MetropolisParameter
-  can::Float64   # candidate value
-  cur::Float64   # current value
+  can::Real   # candidate value
+  cur::Real   # current value
   can_ll::Array  # candidate values log likelihood
   cur_ll::Array  # current values for loglikelihood
   support::Vector  # parameter support
+  length::Integer  # for consistency with vectors
 
   canddist::Type{Normal}  # candidate distribution
   prior::Distribution     # prior distribution
@@ -27,11 +28,13 @@ type MetropolisScalar <: MetropolisParameter
   cur_impacts::Array
   updatefxns::Array
 
-  acc::Int64    # number of acceptances
-  att::Int64    # number of attempts
-  mh::Float64   # current metropolis standard deviation
+  acc::Integer    # number of acceptances
+  att::Integer    # number of attempts
+  mh::Real   # current metropolis standard deviation
 
   updating::Bool
+
+  MetropolisScalar() = new()
 end
 
 type MetropolisVector <: MetropolisParameter
@@ -40,6 +43,7 @@ type MetropolisVector <: MetropolisParameter
   can_ll::Array  # candidate values log likelihood
   cur_ll::Array  # current values for loglikelihood
   support::Vector  # parameter support
+  length::Integer
 
   canddist::Type{Normal}  # candidate distribution
   prior::Distribution     # prior distribution
@@ -52,6 +56,8 @@ type MetropolisVector <: MetropolisParameter
   mh::Vector   # current metropolis standard deviation
 
   updating::Bool
+
+  MetropolisVector() = new()
 end
 
 type MetropolisMatrix <: MetropolisParameter
@@ -60,6 +66,8 @@ type MetropolisMatrix <: MetropolisParameter
   can_ll::Array  # candidate values log likelihood
   cur_ll::Array  # current values for loglikelihood
   support::Vector  # parameter support
+  nrows::Integer
+  ncols::Integer
 
   canddist::Type{Normal}  # candidate distribution
   prior::Distribution     # prior distribution
@@ -72,7 +80,44 @@ type MetropolisMatrix <: MetropolisParameter
   mh::Matrix   # current metropolis standard deviation
 
   updating::Bool
+
+  MetropolisMatrix() = new()
 end
+
+function createmetropolis(length::Integer)
+  if length == 1
+    this = MetropolisScalar()
+  else
+    this = MetropolisVector()
+  end
+
+  this.length = length
+  return this
+end
+
+function createmetropolis(nrows::Integer, ncols::Integer)
+  this = MetropolisMatrix()
+  this.nrows = nrows
+  this.ncols = ncols
+
+  return this
+end
+
+function fillcan!(obj::MetropolisParameter, fill_with::Real)
+  fill!(obj.can, fill_with)
+end
+
+function fillcur!(obj::MetropolisParameter, fill_with::Real)
+  fill!(obj.cur, fill_with)
+end
+
+function initialize!(obj::MetropolisParameter, fill_with::Real)
+  obj.can = fill(fill_with, obj.nrows, obj.ncols)
+  obj.cur = fill(fill_with, obj.nrows, obj.ncols)
+
+  return
+end
+
 
 function updatemh!(obj::MetropolisScalar, nattempts=50, lower=0.8, higher=1.2)
   if obj.att > nattempts
@@ -220,21 +265,23 @@ end
 
 # testing
 using Distributions
-can_lly = Fill(0.0, ns, nt)
-cur_lly = copy(cur_lly)
-can_llps = Fill(0.0, ns, nt)
-cur_llps = copy(cur_llps)
-can_lly_only = {can_lly}
-cur_lly_only = {cur_lly}
-can_llps_only = {can_llps}
-cur_llps_only = {cur_llps}
-can_ll_both = {can_lly, can_llps}
-cur_ll_both = {cur_lly, cur_llps}
+lly_only = {lly}
+llps_only = {llps}
+ll_both = {lly, llps}
 
 canddist = Distributions.Normal
+
+beta = createmetropolis(3)
+xi = createmetropolis(1)
+A = createmetropolis(10, 12)
+alpha = createmetropolis(1)
+rho = createmetropolis(1)
+
 xi_can_impacts = {can_z_star}
 xi_cur_impacts = {z_star}
 xi_update_fxns = {getz, getzstar, logpdf_rarebinary!}
+
+
 
 xi = MetropolisScalar(0.1, 0.1, [-1, 1],
                       0, 0, 0.1,

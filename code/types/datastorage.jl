@@ -5,11 +5,11 @@ abstract LikelihoodValues
 abstract CalculatedValues <: LikelihoodValues
 
 type CalculatedValuesScalar <: CalculatedValues
-  can::Float64
-  cur::Float64
+  can::Real
+  cur::Real
   updater::Function
   requires
-  length::Int64
+  length::Integer
 
   CalculatedValuesScalar() = new()
 end
@@ -19,7 +19,7 @@ type CalculatedValuesVector <: CalculatedValues
   cur::Vector
   updater::Function
   requires
-  length::Int64_
+  length::Integer
 
   CalculatedValuesVector() = new()
 end
@@ -29,32 +29,50 @@ type CalculatedValuesMatrix <: CalculatedValues
   cur::Matrix
   updater::Function
   requires
-  rows::Int64
-  cols::Int64
+  nrows::Integer
+  ncols::Integer
 
   CalculatedValuesMatrix() = new()
 end
 
-function calculatedvalues(initial::Float64, updater::Function, requires)
+# initializes object and give size
+function createcalculatedvalues(length::Integer)
+  if length == 1
+    this = CalculatedValuesScalar()
+  else
+    this = CalculateValuesVector()
+  end
+  this.length = length
 
-  CalculatedValuesScalar(initial, updater, requires, 1)
+  return this
 end
 
-function calculatedvalues(initial::Vector, updater::Function, requires)
+function createcalculatedvalues(nrows::Integer, ncols::Integer)
+  this = CalculatedValuesMatrix()
+  this.nrows, this.ncols = nrows, ncols
 
-  CalculatedValuesVector(initial, updater, requires, size(value)[1])
+  return this
 end
 
-function calculatedvalues(initial::Matrix, updater::Function, requires)
+# fill candidate with a single value
+function fillcan!(obj::CalculatedValuesMatrix, fill_with::Real)
+  fill!(fill_with, obj.can)
 
-  CalculatedValuesMatrix(initial, updater, initialize, requires,
-                         size(value)[1], size(value)[2])
+  return
 end
 
-function fill!(obj::CalculatedValuesMatrix, fill_with::Matrix)
-  obj.can = copy(fill_with)
-  obj.cur = copy(fill_with)
-  obj.nrows, obj.ncols = size(fill_with)
+# fill current with a single value
+function fillcur!(obj::CalculatedValuesMatrix, fill_with::Real)
+  fill!(fill_with, obj.cur)
+
+  return
+end
+
+function initialize!(obj::CalculatedValuesMatrix, fill_with::Real)
+  obj.can = fill(fill_with, obj.nrows, obj.ncols)
+  obj.cur = fill(fill_with, obj.nrows, obj.ncols)
+
+  return
 end
 
 # these don't change throughout the MCMC
@@ -111,11 +129,16 @@ function getzstarcan!(z_star::CalculatedValuesMatrix, z::CalculatedValuesMatrix,
 end
 
 # testing
-x_beta = CalculatedValuesMatrix()
-z      = CalculatedValuesMatrix()
-z_star = CalculatedValuesMatrix()
-lly    = CalculatedValuesMatrix()
-llps   = CalculatedValuesMatrix()
+x_beta = createcalculatedvalues(10, 15)
+initialize!(x_beta, 0.0)
+z      = createcalculatedvalues(10, 15)
+initialize!(z, 0.0)
+z_star = createcalculatedvalues(10, 15)
+initialize!(z_star, 0.0)
+lly    = createcalculatedvalues(10, 15)
+initialize!(lly, 0.0)
+llps   = createcalculatedvalues(10, 15)
+initialize!(llps, 0.0)
 
   # can::Matrix
   # cur::Matrix
