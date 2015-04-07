@@ -1,3 +1,6 @@
+module DataTransformations
+export transident, transunif, translogit, transprobit, transcopula
+
 using Distributions
 # importall
 
@@ -50,3 +53,4 @@ function transcopula(x::Real, dens::Distribution, inv::Bool=false)
   end
 end
 
+end

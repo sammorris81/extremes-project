@@ -1,4 +1,6 @@
 using Distributions
+push!(LOAD_PATH, homedir()"/repos-git/extremes-project/code/types")
+using DataTransformations
 
 abstract ParameterType
 
@@ -8,34 +10,38 @@ abstract MetropolisParameter <: ParameterType
 # currently parameter support must be the same for all rvs in a parameter
 # would be nice to have non-normal candidates
 
-type MetropolisScalar <: MetropolisParameter
-  can::Real   # candidate value
-  cur::Real   # current value
-  can_ll::Array  # candidate values log likelihood
-  cur_ll::Array  # current values for loglikelihood
-  support::Vector  # parameter support
-  length::Integer  # for consistency with vectors
+# originally had MetropolisScalar, but am going to use MetropolisVector
+# where it's a vector of length 1. This will allow me to iterate over
+# the elements using one set of updates for scalar and vectors
 
-  canddist::Type{Normal}  # candidate distribution
-  prior::Distribution     # prior distribution
-  transform::Function     # should there be a transformation
-  requires::Array         # array of everything the updatefxns requires
+# type MetropolisScalar <: MetropolisParameter
+#   can::Real   # candidate value
+#   cur::Real   # current value
+#   can_ll::Array  # candidate values log likelihood
+#   cur_ll::Array  # current values for loglikelihood
+#   support::Vector  # parameter support
+#   length::Integer  # for consistency with vectors
 
-  # want to store the name of elements the parameter impacts
-  # need both candidate and current versions
-  # also want to know which functions we use to update impacted elements
-  can_impacts::Array
-  cur_impacts::Array
-  updatefxns::Array
+#   canddist::Normal     # candidate distribution
+#   prior::Distribution  # prior distribution
+#   transform::Function  # should there be a transformation
+#   requires::Array      # array of everything the updatefxns requires
 
-  acc::Integer    # number of acceptances
-  att::Integer    # number of attempts
-  mh::Real   # current metropolis standard deviation
+#   # want to store the name of elements the parameter impacts
+#   # need both candidate and current versions
+#   # also want to know which functions we use to update impacted elements
+#   can_impacts::Array
+#   cur_impacts::Array
+#   updatefxns::Array
 
-  updating::Bool
+#   acc::Integer    # number of acceptances
+#   att::Integer    # number of attempts
+#   mh::Real   # current metropolis standard deviation
 
-  MetropolisScalar() = new()
-end
+#   updating::Bool
+
+#   MetropolisScalar() = new()
+# end
 
 type MetropolisVector <: MetropolisParameter
   can::Vector    # candidate value
@@ -45,11 +51,11 @@ type MetropolisVector <: MetropolisParameter
   support::Vector  # parameter support
   length::Integer
 
-  canddist::Type{Normal}  # candidate distribution
-  prior::Distribution     # prior distribution
-  transform::Function     # should there be a transformation
-  requires::Array         # array of everything the update requires
-  updatefxns::Array       # array of function names for each update
+  canddist::Normal     # candidate distribution
+  prior::Distribution  # prior distribution
+  transform::Function  # should there be a transformation
+  requires::Array      # array of everything the update requires
+  updatefxns::Array    # array of function names for each update
 
   acc::Vector  # number of acceptances
   att::Vector  # number of attempts
@@ -69,11 +75,11 @@ type MetropolisMatrix <: MetropolisParameter
   nrows::Integer
   ncols::Integer
 
-  canddist::Type{Normal}  # candidate distribution
-  prior::Distribution     # prior distribution
-  transform::Function     # should there be a transformation
-  requires::Array         # array of everything the update requires
-  updatefxns::Array       # array of function names for each update
+  canddist::Normal     # candidate distribution
+  prior::Distribution  # prior distribution
+  transform::Function  # should there be a transformation
+  requires::Array      # array of everything the update requires
+  updatefxns::Array    # array of function names for each update
 
   acc::Matrix  # number of acceptances
   att::Matrix  # number of attempts
@@ -84,25 +90,6 @@ type MetropolisMatrix <: MetropolisParameter
   MetropolisMatrix() = new()
 end
 
-function createmetropolis(length::Integer)
-  if length == 1
-    this = MetropolisScalar()
-  else
-    this = MetropolisVector()
-  end
-
-  this.length = length
-  return this
-end
-
-function createmetropolis(nrows::Integer, ncols::Integer)
-  this = MetropolisMatrix()
-  this.nrows = nrows
-  this.ncols = ncols
-
-  return this
-end
-
 function fillcan!(obj::MetropolisParameter, fill_with::Real)
   fill!(obj.can, fill_with)
 end
@@ -111,25 +98,74 @@ function fillcur!(obj::MetropolisParameter, fill_with::Real)
   fill!(obj.cur, fill_with)
 end
 
-function initialize!(obj::MetropolisParameter, fill_with::Real)
-  obj.can = fill(fill_with, obj.nrows, obj.ncols)
-  obj.cur = fill(fill_with, obj.nrows, obj.ncols)
+function initialize!(obj::MetropolisVector, fill_with::Real)
+  obj.can = fill(fill_with, obj.length)
+  obj.cur = fill(fill_with, obj.length)
 
+  obj.acc = fill(0, obj.length)
+  obj.att = fill(0, obj.length)
   return
 end
 
+function initialize!(obj::MetropolisMatrix, fill_with::Real)
+  obj.can = fill(fill_with, obj.nrows, obj.ncols)
+  obj.cur = fill(fill_with, obj.nrows, obj.ncols)
 
-function updatemh!(obj::MetropolisScalar, nattempts=50, lower=0.8, higher=1.2)
-  if obj.att > nattempts
-    acc_rate = obj.acc / obj.att
-    if acc_rate < 0.25
-      obj.mh *= lower
-    elseif acc_rate > 0.50
-      obj.mh *= higher
-    end
-    obj.acc = 0
-    obj.att = 0
-  end
+  obj.acc = fill(0, obj.nrows, obj.ncols)
+  obj.att = fill(0, obj.nrows, obj.ncols)
+  return
+end
+
+# scalar or vector
+function createmetropolis(length::Integer; initial::Real=0.0,
+                          prior::Distribution=Distributions.Normal(),
+                          support::Vector=[-Inf, Inf],
+                          transform::Function=transident,
+                          requires::Array=[], updatefxns::Array=[],
+                          tune::Real=1.0)
+
+  this = MetropolisVector()
+  this.can = fill(initial, length)
+  this.cur = fill(initial, length)
+
+  this.support    = support
+  this.length     = length
+  this.canddist   = Distributions.Normal()
+  this.prior      = prior
+  this.transform  = transform
+  this.requires   = requires
+  this.updatefxns = updatefxns
+  this.acc        = fill(0, length)
+  this.att        = fill(0, length)
+  this.mh         = fill(tune, length)
+  this.updating   = false
+
+  return this
+end
+
+function createmetropolis(nrows::Integer, ncols::Integer; initial::Real=0.0,
+                          prior::Distribution=Distributions.Normal(),
+                          support::Vector=[-Inf, Inf],
+                          transform::Function=transident,
+                          requires::Array=[], updatefxns::Array=[],
+                          tune::Real=1.0)
+  this = MetropolisMatrix()
+  this.can = fill(initial, nrows, ncols)
+  this.cur = fill(initial, nrows, ncols)
+
+  this.support    = support
+  this.nrows      = nrows
+  this.ncols      = ncols
+  this.canddist   = Distributions.Normal()
+  this.prior      = prior
+  this.transform  = transform
+  this.requires   = requires
+  this.updatefxns = updatefxns
+  this.acc        = fill(0, nrows, ncols)
+  this.att        = fill(0, nrows, ncols)
+  this.mh         = fill(tune, nrows, ncols)
+  this.updating   = false
+  return this
 end
 
 function updatemh!(obj::MetropolisVector, nattempts=50, lower=0.8, higher=1.2)
@@ -165,24 +201,6 @@ function updatemh!(obj::MetropolisMatrix, nattempts=50, lower=0.8, higher=1.2)
 end
 
 # draw from the candidate distribution
-function drawcandidate!(obj::MetropolisScalar)
-  if obj.transform == transident
-    cur_star = obj.cur
-  else  # transform candidate
-    cur_star = obj.transform(obj.cur, obj.support, false)
-  end
-
-  can_star = rand(obj.canddist(cur_star, obj.mh), 1)[1]
-
-  if obj.transform == transident
-    obj.can = can_star
-  else  # transform candidate
-    obj.can = obj.transform(can_star, obj.support, true)
-  end
-
-  obj.att += 1
-end
-
 function drawcandidate!(obj::MetropolisVector, i::Integer)
   if obj.transform == transident
     cur_star = obj.cur[i]
@@ -220,11 +238,6 @@ function drawcandidate!(obj::MetropolisMatrix, i::Integer, j::Integer)
 end
 
 # update the parameter
-function updatecurrent!(obj::MetropolisScalar)
-  obj.cur = obj.can
-  obj.acc += 1
-end
-
 function updatecurrent!(obj::MetropolisVector, i::Integer)
   obj.cur[i] = obj.can[i]
   obj.acc[i] += 1
@@ -235,7 +248,9 @@ function updatecurrent!(obj::MetropolisMatrix, i::Integer, j::Integer)
   obj.acc[i, j] += 1
 end
 
-function updatemh!(obj::MetropolisScalar)
+# running the update for the metropolis parameter
+# TODO: Needs to loop over the length
+function updatestep!(obj::MetropolisVector)
   obj.updating = true
   drawcandidate!(obj)
 
@@ -272,8 +287,8 @@ ll_both = {lly, llps}
 canddist = Distributions.Normal
 
 beta = createmetropolis(3)
-xi = createmetropolis(1)
-A = createmetropolis(10, 12)
+xi = createmetropolis(1; initial=0.1, support=[-1.0, 1.0])
+A = createmetropolis(10, 12; initial=1.0)
 alpha = createmetropolis(1)
 rho = createmetropolis(1)
 
