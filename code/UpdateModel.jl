@@ -1,7 +1,9 @@
 module UpdateModel
 export updatebeta!,
        updatexi!,
-       updatealpha!
+       updatea!,
+       updatealpha!,
+       updaterho!
 
 importall Distributions
 importall AuxFunctions
@@ -75,12 +77,14 @@ function updatexi!(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
                    x_beta::Array{Float64, 2},
                    can_x_beta::Array{Float64, 2},
                    xi::Array{Float64, 1},
+                   xi_m::Array{Float64, 1},
+                   xi_s::Array{Float64, 1},
                    cur_lly::Array{Float64, 2},
                    can_lly::Array{Float64, 2},
                    att::Array{Int64, 1}, acc::Array{Int64, 1},
                    mh::Array{Float64, 1}, thresh::Float64,
                    candidate::Distribution)
-  nt = size(y)[2]
+  ns, nt = size(y)
   att[1] += 1
   alpha_inv = 1 / alpha[1]
 

@@ -1,14 +1,16 @@
 cd()
-cd("./repos-git/extremes-project/code")
+push!(LOAD_PATH, homedir()"/repos-git/extremes-project/code")
 
 # packages
-using Distributions
-using Distances
-using ProfileView
+importall Distributions
+importall Distances
+importall ProfileView
+importall AuxFunctions
+importall UpdateModel
 
 # constants
 const ns = 200
-const nt = 1
+const nt = 5
 const np = 3
 # replaces expand.grid from R
 const knots_x = linspace(0.01, 0.99, 9)
@@ -48,9 +50,26 @@ const npts = 70
 
 @time mcmc(y, s, x, knots, beta_init, beta_m, beta_s, xi_init, xi_m, xi_s,
      npts, thresh, 0.01, 0.1, 0.1, 0.1, 1.0, 50, 50, 200, 200, rho_init, rho_upper,
+     alpha_init, a_init, 1, 1, 100, 1)
+
+@time mcmc(y, s, x, knots, beta_init, beta_m, beta_s, xi_init, xi_m, xi_s,
+     npts, thresh, 0.01, 0.1, 0.1, 0.1, 1.0, 50, 50, 200, 200, rho_init, rho_upper,
      alpha_init, a_init, nreps, burn, 100, 1)
-# time for Julia 18 seconds
-# time for R 26 seconds
+# MBA:
+# Julia 18 seconds
+# R 26 seconds
+
+# Dell with Ubuntu (200 sites, 1 day, 2000 reps, 200 burnin):
+# Julia  9.600  9.691 14.766  9.781  9.685 seconds
+# R     25.619 25.239 25.109 25.058 24.868 seconds
+
+# Dell with Ubuntu (600 sites, 1 day, 2000 reps, 200 burnin):
+# Julia 16.114 16.245 16.276 16.035 16.343 seconds
+# R     48.237 48.889 47.886 46.724 48.455 seconds
+
+# Dell with Ubuntu (200 sites, 5 day, 2000 reps, 200 burnin):
+# Julia 43.440 43.351 43.236 43.264 42.485 seconds
+# R     93.898 93.904 93.360 93.245 93.428 seconds
 
 
 function mcmc(y::Array{Int64, 2}, s::Array{Float64, 2}, x::Array{Float64, 3},
@@ -164,7 +183,7 @@ function mcmc(y::Array{Int64, 2}, s::Array{Float64, 2}, x::Array{Float64, 3},
       updatemh!(beta_att, beta_acc, beta_mh, beta_attempts)
 
       updatexi!(y, theta_star, alpha, z, can_z, z_star, can_z_star,
-                x_beta, can_x_beta, xi, cur_lly, can_lly,
+                x_beta, can_x_beta, xi, xi_m, xi_s, cur_lly, can_lly,
                 xi_att, xi_acc, xi_mh, thresh, xi_candidate)
       updatemh!(xi_att, xi_acc, xi_mh, xi_attempts)
 

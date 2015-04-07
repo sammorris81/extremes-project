@@ -8,7 +8,8 @@ export transunif, transprobit,
        logpdf_rarebinary, logpdf_rarebinary!,
        logpdf_ps, logpdf_ps!,
        sample_pstab,
-       sample_rarebinary
+       sample_rarebinary,
+       get_level
 
 importall Distances
 importall Distributions
@@ -219,6 +220,7 @@ end
 
 function logpdf_rarebinary(y::Array{Int64, 2}, theta_star::Array{Float64, 2},
                            z_star::Array{Float64, 2})
+  ns, nt = size(y)
   ll = fill(0.0, ns, nt)
 
   for j = 1:nt, i = 1:ns
@@ -298,7 +300,9 @@ function sample_pstab(n::Int64, alpha::Float64)
 end
 
 function sample_pstab(n::Int64, alpha::Array{Float64, 1})
-  sample_pstab(n, alpha[1])
+  psrv = sample_pstab(n, alpha[1])
+
+  return psrv
 end
 
 # generate dependent rare binary data
