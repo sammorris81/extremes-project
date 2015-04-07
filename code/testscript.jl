@@ -18,8 +18,8 @@ const knots = hcat(repeat(knots_x, inner=[1], outer=[9]),
 const nknots = size(knots)[1]
 
 # modules
-using AuxFunctions
-using UpdateModel
+importall AuxFunctions
+importall UpdateModel
 
 const s = hcat(rand(ns), rand(ns))
 const x = fill(1.0, ns, nt, 3)
@@ -31,11 +31,11 @@ end
 # testing update for beta
 nreps = 2000
 burn = 200
-xi_t = 0.1
+xi_t = [0.1]
 beta_t = [1.0, -1.0, 0.0]
 theta_star_t = fill(1.0, ns, nt)
-alpha_t = 1.0
-rho_t = 1.0
+alpha_t = [1.0]
+rho_t = [1.0]
 thresh = 0.0
 y = sample_rarebinary(x, s, knots, beta_t, xi_t, alpha_t, rho_t, thresh)
 

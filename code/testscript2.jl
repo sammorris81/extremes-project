@@ -6,7 +6,6 @@ cd("./repos-git/extremes-project/code")
 using Distributions
 using Distances
 using ProfileView
-using NumericExtensions
 
 # constants
 const ns = 200
@@ -25,17 +24,17 @@ for t = 1:nt
 end
 
 # modules
-using AuxFunctions
-using UpdateModel
+importall AuxFunctions
+importall UpdateModel
 
 # testing update for beta
 # nreps = 2000
 # burn = 200
-const xi_t = 0.1
+const xi_t = [0.1]
 const beta_t = [1.0, -1.0, 0.0]
 const theta_star_t = fill(1.0, ns, nt)
-const alpha_t = 1.0
-const rho_t = 1.0
+const alpha_t = [1.0]
+const rho_t = [1.0]
 const thresh = 0.0
 const y = sample_rarebinary(x, s, knots, beta_t, xi_t, alpha_t, rho_t, thresh)
 
@@ -43,5 +42,3 @@ const y = sample_rarebinary(x, s, knots, beta_t, xi_t, alpha_t, rho_t, thresh)
 @time sample_beta!(1, y, theta_star_t, alpha_t, xi_t, x, thresh, ns, nt, np)
 
 @time sample_beta!(2000, y, theta_star_t, alpha_t, xi_t, x, thresh, ns, nt, np)
-
-
