@@ -54,3 +54,4 @@ function transcopula(x::Real, dens::Distribution, inv::Bool=false)
 end
 
 end
+

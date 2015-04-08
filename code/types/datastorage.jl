@@ -1,25 +1,29 @@
 abstract LikelihoodValues
 
 # these are the building blocks for the updated likelihood
-# need the updater function
 abstract CalculatedValues <: LikelihoodValues
 
-type CalculatedValuesScalar <: CalculatedValues
-  can::Real
-  cur::Real
-  updater::Function
-  requires
-  length::Integer
+# type CalculatedValuesScalar <: CalculatedValues
+#   can::Real
+#   cur::Real
+#   updater::Function
+#   requires
+#   length::Integer
 
-  CalculatedValuesScalar() = new()
-end
+#   CalculatedValuesScalar() = new()
+# end
 
+# originally had CalculatedValuesScalar, but am going to use
+# CalculatedValuesVector where it's a vector of length 1.
+# This will allow me to iterate over
+# the elements using one set of updates for scalar and vectors
 type CalculatedValuesVector <: CalculatedValues
   can::Vector
   cur::Vector
   updater::Function
   requires
   length::Integer
+  updating::Bool
 
   CalculatedValuesVector() = new()
 end
@@ -31,28 +35,67 @@ type CalculatedValuesMatrix <: CalculatedValues
   requires
   nrows::Integer
   ncols::Integer
+  updating::Bool
 
   CalculatedValuesMatrix() = new()
 end
 
-# initializes object and give size
-function createcalculatedvalues(length::Integer)
-  if length == 1
-    this = CalculatedValuesScalar()
-  else
-    this = CalculateValuesVector()
-  end
-  this.length = length
+# these don't change throughout the MCMC
+type DataValues <: LikelihoodValues
 
+end
+
+# initializes object and give size
+function createcalculatedvalues(length::Integer;
+                                requires=(), initial::Real=0.0,
+                                updater::Function=null)
+  this = CalculatedValuesVector()
+  this.updating = true
+  this.length   = length
+
+  this.can = fill(convert(FloatingPoint, initial), length)
+  if updater != null
+    updater(this, requires...)
+  end
+  this.cur = copy(this.can)
+  this.updater  = updater
+  this.requires = requires
+
+  this.updating = false
   return this
 end
 
-function createcalculatedvalues(nrows::Integer, ncols::Integer)
+function createcalculatedvalues(nrows::Integer, ncols::Integer;
+                                requires=(), initial::Real=0.0,
+                                updater::Function=null)
   this = CalculatedValuesMatrix()
+  this.updating = true
   this.nrows, this.ncols = nrows, ncols
 
+  this.can = fill(convert(FloatingPoint, initial), nrows, ncols)
+  if updater != null
+    updater(this, requires...)
+  end
+  this.cur = copy(this.can)
+  this.updater  = updater
+  this.requires = requires
+
+  this.updating = false
   return this
 end
+
+function activevalue(obj::CalculatedValues)
+  if obj.updating
+    return obj.can
+  else
+    return obj.cur
+  end
+end
+
+function updatecalculatedvalues(obj::CalculatedValues)
+  obj.updater(obj.requires...)
+end
+
 
 # fill candidate with a single value
 function fillcan!(obj::CalculatedValuesMatrix, fill_with::Real)
@@ -75,70 +118,64 @@ function initialize!(obj::CalculatedValuesMatrix, fill_with::Real)
   return
 end
 
-# these don't change throughout the MCMC
-type DataValues <: LikelihoodValues
+# function getzcan!(z::CalculatedValuesMatrix, xi::MetropolisScalar,
+#                   beta::MetropolisVector, x_beta::CalculatedValuesMatrix,
+#                   thresh=0.0)
+#   if xi.updating
+#     this_xi = xi.can
+#   else
+#     this_xi = xi.cur
+#   end
 
-end
+#   if beta.updating
+#     this_xbeta = x_beta.can
+#   else
+#     this_xbeta = x_beta.cur
+#   end
 
+#   if this_xi != 0
+#     for j = 1:z.nrows, i = 1:z.cols
+#       z.can[i, j] = (1 + this_xi * (thresh - this_xbeta[i, j]))^(1 / this_xi)
+#     end
+#   else
+#     for j = 1:z.nrows, i = 1:z.cols
+#       z.can[i, j] = exp(thresh - this_xbeta[i, j])
+#     end
+#   end
+# end
 
-function getzcan!(z::CalculatedValuesMatrix, xi::MetropolisScalar,
-                  beta::MetropolisVector, x_beta::CalculatedValuesMatrix,
-                  thresh=0.0)
-  if xi.updating
-    this_xi = xi.can
-  else
-    this_xi = xi.cur
-  end
+# function getzstarcan!(z_star::CalculatedValuesMatrix, z::CalculatedValuesMatrix,
+#                       alpha::MetropolisVector, beta::MetropolisVector,
+#                       xi::MetropolisVector)
+#   if alpha.updating
+#     this_alpha_inv = 1 / alpha.can
+#   else
+#     this_alpha_inv = 1 / alpha.cur
+#   end
 
-  if beta.updating
-    this_xbeta = x_beta.can
-  else
-    this_xbeta = x_beta.cur
-  end
+#   if beta.updating || xi.updating
+#     this_z = z.can
+#   else
+#     this_z = z.cur
+#   end
 
-  if this_xi != 0
-    for j = 1:z.nrows, i = 1:z.cols
-      z.can[i, j] = (1 + this_xi * (thresh - this_xbeta[i, j]))^(1 / this_xi)
-    end
-  else
-    for j = 1:z.nrows, i = 1:z.cols
-      z.can[i, j] = exp(thresh - this_xbeta[i, j])
-    end
-  end
-end
+#   for j = 1:z_star.nrows, i = 1:z_star.ncols
+#     z_star.can[i, j] = this_z[i, j]^(this_alpha_inv)
+#   end
 
-function getzstarcan!(z_star::CalculatedValuesMatrix, z::CalculatedValuesMatrix,
-                      alpha::MetropolisScalar, beta::MetropolisVector,
-                      xi::MetropolisScalar)
-  if alpha.updating
-    this_alpha_inv = 1 / alpha.can
-  else
-    this_alpha_inv = 1 / alpha.cur
-  end
+# end
 
-  if beta.updating || xi.updating
-    this_z = z.can
-  else
-    this_z = z.cur
-  end
-
-  for j = 1:z_star.nrows, i = 1:z_star.ncols
-    z_star.can[i, j] = this_z[i, j]^(this_alpha_inv)
-  end
-
-end
-
-# testing
-x_beta = createcalculatedvalues(10, 15)
-initialize!(x_beta, 0.0)
-z      = createcalculatedvalues(10, 15)
-initialize!(z, 0.0)
-z_star = createcalculatedvalues(10, 15)
-initialize!(z_star, 0.0)
-lly    = createcalculatedvalues(10, 15)
-initialize!(lly, 0.0)
-llps   = createcalculatedvalues(10, 15)
-initialize!(llps, 0.0)
+# # testing
+# x_beta = createcalculatedvalues(10, 15)
+# initialize!(x_beta, 0.0)
+# z      = createcalculatedvalues(10, 15)
+# initialize!(z, 0.0)
+# z_star = createcalculatedvalues(10, 15)
+# initialize!(z_star, 0.0)
+# lly    = createcalculatedvalues(10, 15)
+# initialize!(lly, 0.0)
+# llps   = createcalculatedvalues(10, 15)
+# initialize!(llps, 0.0)
 
   # can::Matrix
   # cur::Matrix

@@ -44,18 +44,17 @@ abstract MetropolisParameter <: ParameterType
 # end
 
 type MetropolisVector <: MetropolisParameter
-  can::Vector    # candidate value
-  cur::Vector    # current value
-  can_ll::Array  # candidate values log likelihood
-  cur_ll::Array  # current values for loglikelihood
+  can::Vector      # candidate value
+  cur::Vector      # current value
+  ll::Array        # values of log likelihood
+  # cur_ll::Array  # values of log likelihood
   support::Vector  # parameter support
   length::Integer
 
   canddist::Normal     # candidate distribution
   prior::Distribution  # prior distribution
   transform::Function  # should there be a transformation
-  requires::Array      # array of everything the update requires
-  updatefxns::Array    # array of function names for each update
+  impacts::Array       # array of everything the update impacts
 
   acc::Vector  # number of acceptances
   att::Vector  # number of attempts
@@ -67,10 +66,11 @@ type MetropolisVector <: MetropolisParameter
 end
 
 type MetropolisMatrix <: MetropolisParameter
-  can::Matrix    # candidate value
-  cur::Matrix    # current value
-  can_ll::Array  # candidate values log likelihood
-  cur_ll::Array  # current values for loglikelihood
+  can::Matrix      # candidate value
+  cur::Matrix      # current value
+  ll::CalculatedValues
+  # can_ll::Array    # values of log likelihood
+  # cur_ll::Array    # values of log likelihood
   support::Vector  # parameter support
   nrows::Integer
   ncols::Integer
@@ -78,8 +78,7 @@ type MetropolisMatrix <: MetropolisParameter
   canddist::Normal     # candidate distribution
   prior::Distribution  # prior distribution
   transform::Function  # should there be a transformation
-  requires::Array      # array of everything the update requires
-  updatefxns::Array    # array of function names for each update
+  impacts       # array of everything the update impacts
 
   acc::Matrix  # number of acceptances
   att::Matrix  # number of attempts
@@ -116,25 +115,22 @@ function initialize!(obj::MetropolisMatrix, fill_with::Real)
   return
 end
 
-# scalar or vector
+# create a metropolis parameter that's a scalar or vector
+# to simplify the update, we treat scalars as arrays of length 1
 function createmetropolis(length::Integer; initial::Real=0.0,
                           prior::Distribution=Distributions.Normal(),
                           support::Vector=[-Inf, Inf],
-                          transform::Function=transident,
-                          requires::Array=[], updatefxns::Array=[],
-                          tune::Real=1.0)
+                          transform::Function=transident, tune::Real=1.0)
 
   this = MetropolisVector()
-  this.can = fill(initial, length)
-  this.cur = fill(initial, length)
+  this.can = fill(convert(FloatingPoint, initial), length)
+  this.cur = fill(convert(FloatingPoint, initial), length)
 
   this.support    = support
   this.length     = length
   this.canddist   = Distributions.Normal()
   this.prior      = prior
   this.transform  = transform
-  this.requires   = requires
-  this.updatefxns = updatefxns
   this.acc        = fill(0, length)
   this.att        = fill(0, length)
   this.mh         = fill(tune, length)
@@ -143,15 +139,14 @@ function createmetropolis(length::Integer; initial::Real=0.0,
   return this
 end
 
+# create a metropolis parameter that's a matrix
 function createmetropolis(nrows::Integer, ncols::Integer; initial::Real=0.0,
                           prior::Distribution=Distributions.Normal(),
                           support::Vector=[-Inf, Inf],
-                          transform::Function=transident,
-                          requires::Array=[], updatefxns::Array=[],
-                          tune::Real=1.0)
+                          transform::Function=transident, tune::Real=1.0)
   this = MetropolisMatrix()
-  this.can = fill(initial, nrows, ncols)
-  this.cur = fill(initial, nrows, ncols)
+  this.can = fill(convert(FloatingPoint, initial), nrows, ncols)
+  this.cur = fill(convert(FloatingPoint, initial), nrows, ncols)
 
   this.support    = support
   this.nrows      = nrows
@@ -159,17 +154,32 @@ function createmetropolis(nrows::Integer, ncols::Integer; initial::Real=0.0,
   this.canddist   = Distributions.Normal()
   this.prior      = prior
   this.transform  = transform
-  this.requires   = requires
-  this.updatefxns = updatefxns
   this.acc        = fill(0, nrows, ncols)
   this.att        = fill(0, nrows, ncols)
   this.mh         = fill(tune, nrows, ncols)
   this.updating   = false
+
   return this
 end
 
+# get either the current or candidate values from a metropolis parameter
+# used in the update functions
+function activevalue(obj::MetropolisParameter)
+  if obj.updating
+    return obj.can
+  else
+    return obj.cur
+  end
+end
+
+function addlikelihood!(obj::MetropolisParameter, ll::CalculatedValues)
+  obj.can_ll = ll.can
+  obj.cur_ll = ll.cur
+end
+
+# update the candidate standard deviation
 function updatemh!(obj::MetropolisVector, nattempts=50, lower=0.8, higher=1.2)
-  for i = 1:length(obj.can)
+  for i = 1:obj.length
     if obj.att[i] > nattempts
       acc_rate = obj.acc[i] / obj.att[i]
       if acc_rate < 0.25
@@ -184,9 +194,7 @@ function updatemh!(obj::MetropolisVector, nattempts=50, lower=0.8, higher=1.2)
 end
 
 function updatemh!(obj::MetropolisMatrix, nattempts=50, lower=0.8, higher=1.2)
-  nrows = size(obj)[1]
-  ncols = size(obj)[2]
-  for j = 1:ncols, i = 1:nrows
+  for j = 1:obj.ncols, i = 1:obj.nrows
     if obj.att[i, j] > nattempts  # avoid divide by 0
       acc_rate = obj.acc[i, j] / obj.att[i, j]
       if acc_rate < 0.25
@@ -208,15 +216,13 @@ function drawcandidate!(obj::MetropolisVector, i::Integer)
     cur_star = obj.transform(obj.cur[i], obj.support, false)
   end
 
-  can_star = rand(obj.canddist(cur_star, obj.mh[i]), 1)[1]
+  can_star = cur_star + obj.mh[i] * rand(obj.canddist, 1)[1]
 
   if obj.transform == transident
     obj.can[i] = can_star
   else  # transform candidate
     obj.can[i] = obj.transform(can_star, obj.support, true)
   end
-
-  obj.att[i] += 1
 end
 
 function drawcandidate!(obj::MetropolisMatrix, i::Integer, j::Integer)
@@ -226,7 +232,7 @@ function drawcandidate!(obj::MetropolisMatrix, i::Integer, j::Integer)
     cur_star = obj.transform(obj.cur[i, j], obj.support, false)
   end
 
-  can_star = rand(obj.canddist(cur_star, obj.mh[i, j]), 1)[1]
+  can_star = cur_star + obj.mh[i, j] * rand(obj.canddist, 1)[1]
 
   if obj.transform == transident
     obj.can[i, j] = can_star
@@ -249,65 +255,113 @@ function updatecurrent!(obj::MetropolisMatrix, i::Integer, j::Integer)
 end
 
 # running the update for the metropolis parameter
-# TODO: Needs to loop over the length
 function updatestep!(obj::MetropolisVector)
-  obj.updating = true
-  drawcandidate!(obj)
+  obj.updating = true  # tell the object it's currently updating
 
-  for i = 1:length(obj.impacts)
-    can_impact = obj.can_impacts[i]  # get the name of the object impacted
-    can_impact.updater(can_impact.requires)  # update the item
-  end
+  for i = 1:obj.length
+    obj.att[i] += 1
+    drawcandidate!(obj, i)  # get candidate value
 
-  R = 0
-  for i = 1:length(obj.can_ll)
-    R += sum(obj.can_ll[i]) - sum(obj.cur_ll[i])
-  end
-  R += logpdf(obj.prior, obj.can) - logpdf(obj.prior, obj.cur)
-
-  if (log(rand(1)[1]) < R)
-    updatecurrent!(obj)
-    for i = 1:length(obj.can_ll)
-      copy!(obj.cur_ll[i], obj.can_ll[i])
+    for j = 1:length(obj.impacts)
+      this_impact = obj.impacts[j]  # get the name of the object impacted
+      this_impact.updating = true
+      this_impact.updater(this_impact, this_impact.requires...)  # candidate
     end
-    for i = 1:length(obj.impacts)
-      copy!(obj.cur_impacts[i], obj.can_impacts[i])
-    end
-  end
 
+    # get candidate ll
+    for j = 1:length(obj.ll)
+      this_ll = obj.ll[j]
+      this_ll.updating = true
+      this_ll.updater(this_ll, this_ll.requires...)
+      this_ll.updating = false
+    end
+
+    # log ratio for acceptance
+    R = 0
+    for j = 1:length(obj.ll)
+      R += sum(obj.ll[j].can) - sum(obj.ll[j].cur)
+    end
+
+    # update the acceptance ratio with the logprior values
+    R += logpdf(obj.prior, obj.can[i]) - logpdf(obj.prior, obj.cur[i])
+
+    # decide whether or not to accept or reject
+    if (log(rand(1)[1]) < R)
+      obj.acc[i] += 1
+      copy!(obj.cur, obj.can)  # to copy over the candidate to current values
+
+      # update the likelihood storage
+      for j = 1:length(obj.ll)
+        copy!(obj.ll[j].cur, obj.ll[j].can)
+      end
+
+      # update the elements that the parameter impacts
+      for j = 1:length(obj.impacts)
+        copy!(obj.impacts[j].cur, obj.impacts[j].can)
+      end
+
+      for j = 1:length(obj.impacts)
+        obj.impacts[j].updating = false
+      end
+    end
+
+  end
   obj.updating = false
 end
 
 # testing
+
+# generate covariates and testing data
+# simple example
+# model y = XB + e
+# e ~ N(0, 1)
+# priors:
+#   beta ~ N(0, 100)
 using Distributions
-lly_only = {lly}
-llps_only = {llps}
-ll_both = {lly, llps}
+import Base.LinAlg.BLAS.gemv!
 
-canddist = Distributions.Normal
+x = reshape(rand(Normal(), 45), 45)
+x = hcat(ones(45), x)
+beta_t = [3., -1.]
+x_beta_t = x * beta_t
+y = x_beta_t + rand(Normal(), 45)
 
-beta = createmetropolis(3)
-xi = createmetropolis(1; initial=0.1, support=[-1.0, 1.0])
-A = createmetropolis(10, 12; initial=1.0)
-alpha = createmetropolis(1)
-rho = createmetropolis(1)
+# functions to update calculated values
+function updatexbeta!(xβ::CalculatedValuesVector, x::Matrix, β::MetropolisVector)
+  gemv!('N', 1.0, x, activevalue(β), 0.0, activevalue(xβ))
+end
 
-xi_can_impacts = {can_z_star}
-xi_cur_impacts = {z_star}
-xi_update_fxns = {getz, getzstar, logpdf_rarebinary!}
+function updatelly!(ll::CalculatedValuesVector, y::Vector,
+                    xβ::CalculatedValuesVector)
+  for i = 1:ll.length
+    activevalue(ll)[i] = logpdf(Normal(activevalue(xβ)[i], 1), y[i])
+  end
+end
+
+β = createmetropolis(2)
+xβ = createcalculatedvalues(45, updater=updatexbeta!,
+                            requires=(x, β))
+ll = createcalculatedvalues(45, updater=updatelly!,
+                            requires=(y, xβ))
+β.ll = [ll]  # assign the actual likelihood values to the parameter
+β.impacts = [xβ]
+
+niters = 10000
+burn   = 2000
+
+β_keep = fill(0.0, niters, β.length)
+for iter = 1:niters
+  updatestep!(β)
+
+  if iter < (burn / 2)
+    updatemh!(β)
+  end
+
+  β_keep[iter, :] = β.cur
+end
 
 
+# updater(requires...) requires... unpacks the array named requires
 
-xi = MetropolisScalar(0.1, 0.1, [-1, 1],
-                      0, 0, 0.1,
-                      Distributions.Normal, Distributions.Normal(0, 1),
-                      translogit,
-                      can_lly_only, cur_lly_only,
-                      xi_can_impacts, xi_cur_impacts,
-                      xi_update_fxns, xi_requires
-                      )
-xi.transform(xi.can, xi.support, false)
-@time drawcandidate!(xi)
-updatemh!(xi)
 
 
