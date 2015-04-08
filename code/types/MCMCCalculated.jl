@@ -1,22 +1,16 @@
-abstract LikelihoodValues
+module MCMCCalculated
+export CalculatedValues, CalculatedValuesVector, CalculatedValuesMatrix,
+       createcalculatedvalues, activevalue
 
-# these are the building blocks for the updated likelihood
-abstract CalculatedValues <: LikelihoodValues
+# these are the building blocks to be able to update the MCMC
+# calculated values specify how to update themselves as well as any
+# objects they require to be updated
 
-# type CalculatedValuesScalar <: CalculatedValues
-#   can::Real
-#   cur::Real
-#   updater::Function
-#   requires
-#   length::Integer
-
-#   CalculatedValuesScalar() = new()
-# end
-
+abstract CalculatedValues
 # originally had CalculatedValuesScalar, but am going to use
 # CalculatedValuesVector where it's a vector of length 1.
-# This will allow me to iterate over
-# the elements using one set of updates for scalar and vectors
+# This will allow me to iterate over the elements using one set of updates
+# for both scalars and vectors
 type CalculatedValuesVector <: CalculatedValues
   can::Vector
   cur::Vector
@@ -38,11 +32,6 @@ type CalculatedValuesMatrix <: CalculatedValues
   updating::Bool
 
   CalculatedValuesMatrix() = new()
-end
-
-# these don't change throughout the MCMC
-type DataValues <: LikelihoodValues
-
 end
 
 # initializes object and give size
@@ -92,31 +81,31 @@ function activevalue(obj::CalculatedValues)
   end
 end
 
-function updatecalculatedvalues(obj::CalculatedValues)
-  obj.updater(obj.requires...)
-end
+# function updatecalculatedvalues(obj::CalculatedValues)
+#   obj.updater(obj.requires...)
+# end
 
 
-# fill candidate with a single value
-function fillcan!(obj::CalculatedValuesMatrix, fill_with::Real)
-  fill!(fill_with, obj.can)
+# # fill candidate with a single value
+# function fillcan!(obj::CalculatedValuesMatrix, fill_with::Real)
+#   fill!(fill_with, obj.can)
 
-  return
-end
+#   return
+# end
 
-# fill current with a single value
-function fillcur!(obj::CalculatedValuesMatrix, fill_with::Real)
-  fill!(fill_with, obj.cur)
+# # fill current with a single value
+# function fillcur!(obj::CalculatedValuesMatrix, fill_with::Real)
+#   fill!(fill_with, obj.cur)
 
-  return
-end
+#   return
+# end
 
-function initialize!(obj::CalculatedValuesMatrix, fill_with::Real)
-  obj.can = fill(fill_with, obj.nrows, obj.ncols)
-  obj.cur = fill(fill_with, obj.nrows, obj.ncols)
+# function initialize!(obj::CalculatedValuesMatrix, fill_with::Real)
+#   obj.can = fill(fill_with, obj.nrows, obj.ncols)
+#   obj.cur = fill(fill_with, obj.nrows, obj.ncols)
 
-  return
-end
+#   return
+# end
 
 # function getzcan!(z::CalculatedValuesMatrix, xi::MetropolisScalar,
 #                   beta::MetropolisVector, x_beta::CalculatedValuesMatrix,
@@ -183,3 +172,5 @@ end
   # requires
   # rows::Int64
   # cols::Int64
+
+end
