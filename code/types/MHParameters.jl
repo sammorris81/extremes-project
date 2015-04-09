@@ -10,6 +10,7 @@ using Distributions
 push!(LOAD_PATH, homedir()"/repos-git/extremes-project/code/types")
 using MCMCCalculated
 using DataTransformations
+import MCMCCalculated.activevalue
 
 abstract ParameterType
 abstract MetropolisParameter <: ParameterType
