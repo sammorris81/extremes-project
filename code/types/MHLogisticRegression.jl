@@ -7,6 +7,7 @@ using MHParameters
 
 # Simulated example - Logistic regression
 # model P(Y = 1) = exp(Xβ) / (1 + exp(Xβ))
+#                = 1 / (1 + exp(-Xβ))
 #   Xβ = β₀ + β₁x₁ + β₂x₂
 # priors:
 #   β ~ N(0, 100) i.i.d.
@@ -17,7 +18,7 @@ X = reshape(rand(Normal(), n*2), n, 2)
 X = hcat(ones(n), X)
 βₐ = [0.5, -1., 1.]
 Xβₐ = X * βₐ
-π = exp(Xβₐ) ./ (1 + exp(Xβₐ))
+π = 1 ./ (1 + exp(-Xβₐ))
 y = [rand(Binomial(1, π[i]), 1)[1] for i = 1:n]
 
 # functions to update calculated values
@@ -30,7 +31,7 @@ function updatelly!(ll::CalculatedValuesVector, y::Vector,
   activeXβ = activevalue(Xβ)
   for i = 1:ll.length
     if y[i] == 1
-      activevalue(ll)[i] = activeXβ[i] - log(1 + exp(activeXβ[i]))
+      activevalue(ll)[i] = -log(1 + exp(-activeXβ[i]))
     else
       activevalue(ll)[i] = -log(1 + exp(activeXβ[i]))
     end
@@ -49,7 +50,7 @@ niters = 10000
 burn   = 2000
 
 β_keep = fill(0.0, niters, β.length)
-for iter = 1:niters
+@time for iter = 1:niters
   updatemh!(β)
 
   if iter < (burn / 2)
@@ -63,5 +64,3 @@ using Gadfly
 plot(x=1:niters, y=β_keep[:, 1], Geom.line)
 plot(x=1:niters, y=β_keep[:, 2], Geom.line)
 plot(x=1:niters, y=β_keep[:, 3], Geom.line)
-
-# updater(requires...) requires... unpacks the array named requires

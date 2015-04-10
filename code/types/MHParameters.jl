@@ -24,8 +24,7 @@ abstract MetropolisParameter <: ParameterType
 type MetropolisVector <: MetropolisParameter
   can::Vector      # candidate value
   cur::Vector      # current value
-  ll::Array        # values of log likelihood
-  # cur_ll::Array  # values of log likelihood
+  ll::Array        # tells which log likelihood values are impacted
   support::Vector  # parameter support
   length::Integer
 
@@ -46,9 +45,7 @@ end
 type MetropolisMatrix <: MetropolisParameter
   can::Matrix      # candidate value
   cur::Matrix      # current value
-  ll::CalculatedValues
-  # can_ll::Array    # values of log likelihood
-  # cur_ll::Array    # values of log likelihood
+  ll::Array        # tells which log likelihood values are impacted
   support::Vector  # parameter support
   nrows::Integer
   ncols::Integer
@@ -214,6 +211,7 @@ function updatecurrent!(obj::MetropolisMatrix, i::Integer, j::Integer)
   obj.acc[i, j] += 1
 end
 
+# updater(requires...) requires... unpacks the array named requires
 # running the update for the metropolis parameter
 function updatemh!(obj::MetropolisVector)
   obj.updating = true  # tell the object it's currently updating
@@ -222,6 +220,9 @@ function updatemh!(obj::MetropolisVector)
     obj.att[i] += 1
     drawcandidate!(obj, i)  # get candidate value
 
+    # loop over everything that this metropolis object impacts
+    # allows the updatemh! function to accommodate any number of
+    # possible updates
     for j = 1:length(obj.impacts)
       this_impact = obj.impacts[j]  # get the name of the object impacted
       this_impact.updating = true
@@ -229,6 +230,9 @@ function updatemh!(obj::MetropolisVector)
     end
 
     # get candidate ll
+    # generally speaking this array will have length 1, but sometimes a parameter
+    # also impacts a random effect and we also need to evaluate the likelihood
+    # for that too.
     for j = 1:length(obj.ll)
       this_ll = obj.ll[j]
       this_ll.updating = true
@@ -260,13 +264,14 @@ function updatemh!(obj::MetropolisVector)
         copy!(obj.impacts[j].cur, obj.impacts[j].can)
       end
 
+      # reset the updating flag for all objects that were impacted by parameter
       for j = 1:length(obj.impacts)
         obj.impacts[j].updating = false
       end
     end
 
   end
-  obj.updating = false
+  obj.updating = false  # we finished the current update
 end
 
 end
