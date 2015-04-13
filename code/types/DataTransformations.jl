@@ -1,11 +1,22 @@
 module DataTransformations
-export transident, transunif, translogit, transprobit, transcopula
+export transident, translog, transunif, translogit, transprobit, transcopula
 
 using Distributions
 # importall
 
 function transident(x::Real)
   x
+end
+
+# we include the translog function for using log(θ) to use a Normal random
+# walk candidate when θ ∈ [0, Inf]
+function translog(x::Real, inv::Bool=false)
+  @assert x >= 0
+  if !inv
+    return log(x)
+  else
+    return exp(x)
+  end
 end
 
 function transunif(x::Real, support::Vector, inv::Bool=false)
