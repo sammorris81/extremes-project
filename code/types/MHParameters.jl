@@ -9,8 +9,11 @@ export ParameterType, MetropolisParameter, MetropolisVector, MetropolisMatrix,
 using Distributions
 push!(LOAD_PATH, homedir()"/repos-git/extremes-project/code/types")
 using MCMCCalculated
-using DataTransformations
+importall DataTransformations  # want access to all the names in this module
 import MCMCCalculated.activevalue
+
+# TODO: Write sequential update for matrix
+# TODO: Write block updates for vectors and matrices
 
 abstract ParameterType
 abstract MetropolisParameter <: ParameterType
@@ -19,19 +22,23 @@ abstract MetropolisParameter <: ParameterType
 # would be nice to have non-normal candidates
 
 # originally had MetropolisScalar, but am going to use MetropolisVector
-# where it's a vector of length 1. This will allow me to iterate over
+# where it's a vector of length 1. This will allow us to iterate over
 # the elements using one set of updates for scalar and vectors
 type MetropolisVector <: MetropolisParameter
   can::Vector      # candidate value
+  canstar::Vector  # transformed candidate value
   cur::Vector      # current value
+  curstar::Vector  # transformed current value
   ll::Array        # tells which log likelihood values are impacted
   support::Vector  # parameter support
   length::Integer
 
   canddist::Normal     # candidate distribution
   prior::Distribution  # prior distribution
+  usestar::Bool        # should we use the transformed parameter to eval prior
   transform::Function  # should there be a transformation
   impacts::Array       # array of everything the update impacts
+  seq::Bool            # update sequentially (vs block)
 
   acc::Vector  # number of acceptances
   att::Vector  # number of attempts
@@ -44,7 +51,9 @@ end
 
 type MetropolisMatrix <: MetropolisParameter
   can::Matrix      # candidate value
+  canstar::Matrix  # transformed candidate value
   cur::Matrix      # current value
+  curstar::Matrix  # transformed current value
   ll::Array        # tells which log likelihood values are impacted
   support::Vector  # parameter support
   nrows::Integer
@@ -52,8 +61,10 @@ type MetropolisMatrix <: MetropolisParameter
 
   canddist::Normal     # candidate distribution
   prior::Distribution  # prior distribution
+  usestar::Bool        # should we use the transformed parameter to eval prior
   transform::Function  # should there be a transformation
-  impacts       # array of everything the update impacts
+  impacts::Array       # array of everything the update impacts
+  seq::Bool            # update sequentially (vs block)
 
   acc::Matrix  # number of acceptances
   att::Matrix  # number of attempts
@@ -77,18 +88,31 @@ end
 function createmetropolis(length::Integer; initial::Real=0.0,
                           prior::Distribution=Distributions.Normal(),
                           support::Vector=[-Inf, Inf],
-                          transform::Function=DataTransformations.transident,
+                          transform::Function=transident,
+                          usestar::Bool=false, seq::Bool=true,
                           tune::Real=1.0)
 
   this = MetropolisVector()
   this.can = fill(convert(FloatingPoint, initial), length)
   this.cur = fill(convert(FloatingPoint, initial), length)
 
+  if transform == transident
+    this.canstar = copy(this.can)
+    this.curstar = copy(this.cur)
+  else
+    for i = 1:length
+      this.canstar[i] = transform(this.can[i], support, false)
+      this.curstar[i] = transform(this.cur[i], support, false)
+    end
+  end
+
   this.support    = support
   this.length     = length
   this.canddist   = Distributions.Normal()
   this.prior      = prior
+  this.usestar    = usestar
   this.transform  = transform
+  this.seq        = seq
   this.acc        = fill(0, length)
   this.att        = fill(0, length)
   this.mh         = fill(tune, length)
@@ -101,18 +125,31 @@ end
 function createmetropolis(nrows::Integer, ncols::Integer; initial::Real=0.0,
                           prior::Distribution=Distributions.Normal(),
                           support::Vector=[-Inf, Inf],
-                          transform::Function=DataTransformations.transident,
+                          transform::Function=transident,
+                          usestar::Bool=false, seq::Bool=true,
                           tune::Real=1.0)
   this = MetropolisMatrix()
   this.can = fill(convert(FloatingPoint, initial), nrows, ncols)
   this.cur = fill(convert(FloatingPoint, initial), nrows, ncols)
+
+  if transform == transident
+    this.canstar = copy(this.can)
+    this.curstar = copy(this.cur)
+  else
+    for j = 1:ncols, i = 1:nrows
+      this.canstar[i, j] = transform(this.can[i, j], support, false)
+      this.curstar[i, j] = transform(this.cur[i, j], support, false)
+    end
+  end
 
   this.support    = support
   this.nrows      = nrows
   this.ncols      = ncols
   this.canddist   = Distributions.Normal()
   this.prior      = prior
+  this.usestar    = usestar
   this.transform  = transform
+  this.seq        = seq
   this.acc        = fill(0, nrows, ncols)
   this.att        = fill(0, nrows, ncols)
   this.mh         = fill(tune, nrows, ncols)
@@ -168,33 +205,33 @@ end
 # draw from the candidate distribution
 function drawcandidate!(obj::MetropolisVector, i::Integer)
   if obj.transform == transident
-    cur_star = obj.cur[i]
+    obj.curstar[i] = obj.cur[i]
   else  # transform candidate
-    cur_star = obj.transform(obj.cur[i], obj.support, false)
+    obj.curstar[i] = obj.transform(obj.cur[i], obj.support, false)
   end
 
-  can_star = cur_star + obj.mh[i] * rand(obj.canddist, 1)[1]
+  obj.canstar[i] = obj.curstar[i] + obj.mh[i] * rand(obj.canddist, 1)[1]
 
   if obj.transform == transident
-    obj.can[i] = can_star
+    obj.can[i] = obj.canstar[i]
   else  # transform candidate
-    obj.can[i] = obj.transform(can_star, obj.support, true)
+    obj.can[i] = obj.transform(obj.canstar[i], obj.support, true)
   end
 end
 
 function drawcandidate!(obj::MetropolisMatrix, i::Integer, j::Integer)
   if obj.transform == transident
-    cur_star = obj.cur[i, j]
+    obj.curstar[i, j] = obj.cur[i, j]
   else  # transform candidate
-    cur_star = obj.transform(obj.cur[i, j], obj.support, false)
+    obj.curstar[i, j] = obj.transform(obj.cur[i, j], obj.support, false)
   end
 
-  can_star = cur_star + obj.mh[i, j] * rand(obj.canddist, 1)[1]
+  obj.canstar[i, j] = obj.curstar[i, j] + obj.mh[i, j] * rand(obj.canddist, 1)[1]
 
   if obj.transform == transident
-    obj.can[i, j] = can_star
+    obj.can[i, j] = obj.canstar[i, j]
   else  # transform candidate
-    obj.can[i, j] = obj.transform(can_star, obj.support, true)
+    obj.can[i, j] = obj.transform(obj.canstar, obj.support, true)
   end
 
   obj.att[i, j] += 1
@@ -211,10 +248,44 @@ function updatecurrent!(obj::MetropolisMatrix, i::Integer, j::Integer)
   obj.acc[i, j] += 1
 end
 
+# when we transform a parmaeter, sometimes we want the prior to be on the
+# transformed space. Mostly used when working with a candidate that has a
+# uniform prior
+function evallogpriordiff(obj::MetropolisVector, i::Integer)
+  if !obj.usestar
+    return logpdf(obj.prior, obj.can[i]) -
+           logpdf(obj.prior, obj.cur[i])
+  else
+    return logpdf(obj.prior, obj.canstar[i]) -
+           logpdf(obj.prior, obj.curstar[i])
+  end
+end
+
+function evallogpriordiff(obj::MetropolisMatrix, i::Integer, j::Integer)
+  if !obj.usestar
+    return logpdf(obj.prior, obj.can[i, j]) -
+           logpdf(obj.prior, obj.can[i, j])
+  else
+    return logpdf(obj.prior, obj.canstar[i, j]) -
+           logpdf(obj.prior, obj.canstar[i, j])
+  end
+end
+
 # updater(requires...) requires... unpacks the array named requires
 # running the update for the metropolis parameter
 function updatemh!(obj::MetropolisVector)
   obj.updating = true  # tell the object it's currently updating
+
+  if obj.seq
+    updatemhseq!(obj)
+  else
+    updatemhblock!(obj)
+  end
+
+  obj.updating = false  # we finished the current update
+end
+
+function updatemhseq!(obj::MetropolisVector)
 
   for i = 1:obj.length
     obj.att[i] += 1
@@ -247,7 +318,7 @@ function updatemh!(obj::MetropolisVector)
     end
 
     # update the acceptance ratio with the logprior values
-    R += logpdf(obj.prior, obj.can[i]) - logpdf(obj.prior, obj.cur[i])
+    R += evallogpriordiff(obj, i)
 
     # decide whether or not to accept or reject
     if (log(rand(1)[1]) < R)
@@ -271,7 +342,21 @@ function updatemh!(obj::MetropolisVector)
     end
 
   end
-  obj.updating = false  # we finished the current update
 end
+
+function updatemhseq!(obj::MetropolisMatrix)
+
+end
+
+
+function updatemhblock!(obj::MetropolisVector)
+
+end
+
+
+function updatemhblock!(obj::MetropolisMatrix)
+
+end
+
 
 end
