@@ -1,5 +1,11 @@
 module DataTransformations
-export transident, translog, transunif, translogit, transprobit, transcopula
+export
+  transident,
+  translog,
+  transunif,
+  translogit,
+  transprobit,
+  transgauscopula
 
 using Distributions
 # importall
@@ -54,7 +60,7 @@ function transprobit(x::Real, support::Vector, inv::Bool=false)
   end
 end
 
-function transcopula(x::Real, dens::Distribution, inv::Bool=false)
+function transgauscopula(x::Real, dens::Distribution, inv::Bool=false)
   if !inv
     p = cdf(dens, x)
     return quantile(Distributions.Normal(0, 1), p)
