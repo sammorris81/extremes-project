@@ -1,9 +1,7 @@
 using Distributions
 import Base.LinAlg.BLAS.gemv!
-push!(LOAD_PATH, homedir()"/repos-git/extremes-project/code/types")
 using DataTransformations
-using MCMCCalculated
-using MHParameters
+using MetropolisUpdaters
 
 # Simulated example - Simple Linear Regression
 # model y = Xβ + e
@@ -43,7 +41,7 @@ burn   = 2000
 
 β_keep = fill(0.0, niters, β.length)
 for iter = 1:niters
-  updatemh!(β)
+  updatemhseq!(β)
 
   if iter < (burn / 2)
     updatestepsize!(β)
